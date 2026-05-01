@@ -21,8 +21,10 @@ const trepa = new Trepa({
 });
 
 await trepa.bot.run({
-  stake: 1,
-  predict: (pool) => (pool.min_outcome + pool.max_outcome) / 2,
+  predict: (pool) => ({
+    value: (pool.min_outcome + pool.max_outcome) / 2,
+    stake: pool.min_stake,
+  }),
 });
 ```
 

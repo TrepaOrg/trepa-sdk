@@ -16,7 +16,3 @@ Requires Node 22.12+. `Ctrl-C` stops the bot cleanly.
 
 - `TREPA_API_KEY` — get one at [docs.trepa.io/developers/api-keys](https://docs.trepa.io/developers/api-keys)
 - `TREPA_PRIVATE_KEY` — Solana key that funds predictions, see [docs.trepa.io/developers/private-key](https://docs.trepa.io/developers/private-key)
-
-## Customize
-
-Edit `predict` in `bot.strategy.ts` to change what value or stake the bot submits. Any function returning `{ value, stake }` (or just a `number`) works — the SDK handles polling, dedup, and snapping to pool steps for you.

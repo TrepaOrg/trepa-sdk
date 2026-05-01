@@ -1,5 +1,4 @@
 import type { components } from './api/schema';
-import { TrepaError } from './errors';
 import type {
 	AuthResource,
 	PredictionsResource,
@@ -9,12 +8,7 @@ import type {
 export type OpenPool = components['schemas']['PoolWithRelationsDto'];
 type UserDto = components['schemas']['UserDto'];
 
-export type BotPredictDecision =
-	| number
-	| { value: number; stake?: number }
-	| null
-	| undefined
-	| void;
+export type BotPredictDecision = { value: number; stake: number } | null;
 
 export interface BotContext {
 	me: UserDto;
@@ -33,17 +27,17 @@ export interface BotSkippedInfo {
 		| 'no-open-pool'
 		| 'predict-returned-null'
 		| 'invalid-value'
+		| 'invalid-stake'
 		| 'predict-threw';
 }
 
 export interface BotOptions {
 	/** Streak to follow. Defaults to the Bitcoin streak. */
 	streakId?: string;
-	/** Default stake (USDC) when `predict` returns just a number. */
-	stake?: number;
 	/**
-	 * Decide what to predict in a given pool. The returned `value` is
-	 * automatically snapped to `pool.step` and clamped to
+	 * Decide what to predict in a given pool. Return `{ value, stake }` to
+	 * submit a prediction, or `null` to skip the pool. The returned `value`
+	 * is automatically snapped to `pool.step` and clamped to
 	 * `[pool.min_outcome, pool.max_outcome]`. The `stake` is clamped to
 	 * `[pool.min_stake, pool.max_stake]`.
 	 *
@@ -89,9 +83,11 @@ const DEFAULT_POST_RESOLVE_BUFFER_MS = 5_000;
  * process.on('SIGINT', () => ac.abort())
  *
  * await trepa.bot.run({
- *   stake: 1,
  *   signal: ac.signal,
- *   predict: (pool) => (pool.min_outcome + pool.max_outcome) / 2,
+ *   predict: (pool) => ({
+ *     value: (pool.min_outcome + pool.max_outcome) / 2,
+ *     stake: pool.min_stake,
+ *   }),
  *   onPredicted: ({ pool, value, stake }) =>
  *     console.log(`[${pool.title}] ${value} @ ${stake}`),
  * })
@@ -176,30 +172,23 @@ export class Bot {
 			return;
 		}
 
-		if (decision === null || decision === undefined) {
+		if (decision === null) {
 			options.onPoolSkipped?.({ pool, reason: 'predict-returned-null' });
 			return;
 		}
 
-		const rawValue = typeof decision === 'number' ? decision : decision.value;
-		const overrideStake =
-			typeof decision === 'number' ? undefined : decision.stake;
-		const rawStake = overrideStake ?? options.stake;
-
-		if (rawStake === undefined) {
-			throw new TrepaError(
-				'bot.run: stake is required. Pass `stake` in BotOptions or return { value, stake } from `predict`.',
-				{ status: 0, code: 'missing_stake' },
-			);
-		}
-
-		if (!Number.isFinite(rawValue)) {
+		if (!Number.isFinite(decision.value)) {
 			options.onPoolSkipped?.({ pool, reason: 'invalid-value' });
 			return;
 		}
 
-		const value = snap(rawValue, pool);
-		const stake = clamp(rawStake, pool.min_stake, pool.max_stake);
+		if (!Number.isFinite(decision.stake)) {
+			options.onPoolSkipped?.({ pool, reason: 'invalid-stake' });
+			return;
+		}
+
+		const value = snap(decision.value, pool);
+		const stake = clamp(decision.stake, pool.min_stake, pool.max_stake);
 
 		try {
 			await this.predictions.create({ poolId: pool.id, stake, value });
