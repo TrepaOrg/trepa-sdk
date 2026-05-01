@@ -13,5 +13,5 @@ export default defineConfig({
 	treeshake: true,
 	splitting: false,
 	minify: false,
-	external: ['@solana/kit'],
+	noExternal: ['@solana/kit'],
 })

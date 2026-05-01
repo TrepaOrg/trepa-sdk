@@ -5,7 +5,7 @@ TREPA-SDK is the official TypeScript SDK for the [Trepa API](https://docs.trepa.
 ## Install
 
 ```bash
-npm install @trepa/sdk @solana/kit
+npm install @trepa/sdk
 ```
 
 ## Usage

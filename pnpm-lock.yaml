@@ -8,13 +8,13 @@ importers:
 
   .:
     dependencies:
+      '@solana/kit':
+        specifier: ^6.8.0
+        version: 6.8.0(typescript@5.9.3)
       openapi-fetch:
         specifier: ^0.17.0
         version: 0.17.0
     devDependencies:
-      '@solana/kit':
-        specifier: ^6.8.0
-        version: 6.8.0(typescript@5.9.3)
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.17
