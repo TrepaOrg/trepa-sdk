@@ -472,7 +472,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get the Bitcoin flash streak
+         * Get the Bitcoin streak
          * @description Returns the streak that powers the Bitcoin Flash product.
          */
         get: operations["StreaksController_getBitcoinStreak"];

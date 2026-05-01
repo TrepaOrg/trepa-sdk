@@ -2,7 +2,7 @@
   "name": "@trepa/example-liquidity-bot",
   "version": "0.0.0",
   "private": true,
-  "description": "Liquidity-bootstrapping bot for the Bitcoin Flash streak.",
+  "description": "Liquidity-bootstrapping bot for the Bitcoin streak.",
   "type": "module",
   "scripts": {
     "start": "node --env-file=.env bot.strategy.ts"
@@ -11,8 +11,7 @@
     "node": ">=22.12.0"
   },
   "dependencies": {
-    "@trepa/sdk": "latest",
-    "@binance/spot": "^29.0.0"
+    "@trepa/sdk": "latest"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

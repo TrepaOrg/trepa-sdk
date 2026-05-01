@@ -116,7 +116,7 @@ export class PoolsResource extends Resource {
 }
 
 export class StreaksResource extends Resource {
-	/** The Bitcoin Flash streak: the canonical entry point for the SDK. */
+	/** The Bitcoin streak: the canonical entry point for the SDK. */
 	async bitcoin(): Promise<Schema<'StreakBitcoinDto'>> {
 		return this.session.request(() => this.client.GET('/streak/bitcoin'));
 	}

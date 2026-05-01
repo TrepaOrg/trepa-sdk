@@ -30,7 +30,7 @@ In simple terms, bots place a prediction on every open pool using your function 
 
 ## Examples
 
-- [`examples/liquidity-bot`](./examples/liquidity-bot): a minimal liquidity-bootstrapping bot for the Bitcoin Flash streak. Reads the live BTCUSDT spot price from Binance via the official [`@binance/spot`](https://www.npmjs.com/package/@binance/spot) connector, adds a small random jitter so concurrent bots don't all land on the same tick, and submits a min-stake prediction on every open pool.
+- [`examples/liquidity-bot`](./examples/liquidity-bot): a minimal liquidity-bootstrapping bot for the Bitcoin streak. Reads the live BTCUSDT spot price from Binance's public REST endpoint, adds a small random jitter so concurrent bots don't all land on the same tick, and submits a min-stake prediction on every open pool.
 
 For the full set of endpoints and walkthroughs of every flow, see the [docs](https://docs.trepa.io/developers/introduction).
 

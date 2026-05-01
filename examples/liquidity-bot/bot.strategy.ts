@@ -1,8 +1,8 @@
-import { Spot } from '@binance/spot';
 import { Trepa } from '@trepa/sdk';
+import { fetchBtcPrice } from './utils';
 
 /**
- * Liquidity-seeding strategy for the Bitcoin Flash streak.
+ * Liquidity-seeding strategy for the Bitcoin streak.
  *
  * For every open pool, anchor a prediction at Binance's live BTC/USDT spot
  * price — the same reference the streak resolves against — then nudge it by
@@ -21,15 +21,9 @@ const trepa = new Trepa({
 	privateKey: process.env.TREPA_PRIVATE_KEY,
 });
 
-const binance = new Spot({});
-
 await trepa.bot.run({
 	predict: async (pool) => {
-		const res = await binance.restAPI.tickerPrice({ symbol: 'BTCUSDT' });
-
-		const data = res.data();
-		const ticker = Array.isArray(data) ? data[0] : data;
-		const price = Number(ticker?.price);
+		const price = await fetchBtcPrice();
 
 		const range = pool.max_outcome - pool.min_outcome;
 		const jitter = (Math.random() - 0.5) * 0.005 * range;

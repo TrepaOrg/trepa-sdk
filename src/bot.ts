@@ -37,7 +37,7 @@ export interface BotSkippedInfo {
 }
 
 export interface BotOptions {
-	/** Streak to follow. Defaults to the Bitcoin Flash streak. */
+	/** Streak to follow. Defaults to the Bitcoin streak. */
 	streakId?: string;
 	/** Default stake (USDC) when `predict` returns just a number. */
 	stake?: number;
