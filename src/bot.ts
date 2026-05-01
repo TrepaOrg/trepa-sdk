@@ -158,10 +158,7 @@ export class Bot {
 		}
 	}
 
-	private async tryPredict(
-		pool: OpenPool,
-		options: BotOptions,
-	): Promise<void> {
+	private async tryPredict(pool: OpenPool, options: BotOptions): Promise<void> {
 		let decision: BotPredictDecision;
 
 		try {
@@ -181,18 +178,12 @@ export class Bot {
 		}
 
 		if (!Number.isFinite(decision.value)) {
-			emit(
-				'skip',
-				options.onPoolSkipped?.({ pool, reason: 'invalid-value' }),
-			);
+			emit('skip', options.onPoolSkipped?.({ pool, reason: 'invalid-value' }));
 			return;
 		}
 
 		if (!Number.isFinite(decision.stake)) {
-			emit(
-				'skip',
-				options.onPoolSkipped?.({ pool, reason: 'invalid-stake' }),
-			);
+			emit('skip', options.onPoolSkipped?.({ pool, reason: 'invalid-stake' }));
 			return;
 		}
 

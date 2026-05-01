@@ -51,10 +51,16 @@ await trepa.bot.run({
 
 		return { value, stake };
 	},
-	onStart: ({ me }) => `liquidity bot online as @${me.username}`,
-	onPredicted: ({ pool, value, stake }) =>
-		`${pool.title} → ${formatNumber(value, pool.precision)} @ ${formatNumber(stake, 2)} USDC`,
-	onPoolSkipped: ({ pool, reason }) =>
-		`${pool?.title ?? '(no pool open)'} — ${reason}`,
-	onError: (err) => formatError(err),
+	onStart: ({ me }) => {
+		return `bot online as @${me.username}`;
+	},
+	onPredicted: ({ pool, value, stake }) => {
+		return `${pool.title} → ${formatNumber(value, pool.precision)} @ ${formatNumber(stake, 2)} USDC`;
+	},
+	onPoolSkipped: ({ pool, reason }) => {
+		return `${pool?.title ?? ''} — ${reason}`;
+	},
+	onError: (err) => {
+		return formatError(err);
+	},
 });
