@@ -1,7 +1,7 @@
 export { Trepa, type TrepaConfig } from './trepa';
 export { TrepaError, isTrepaError } from './errors';
 export { signTransaction } from './sign';
-export { Bots } from './bot';
+export { Bots, credentialsFromEnv } from './bot';
 export type {
 	BotCredentials,
 	BotSlot,

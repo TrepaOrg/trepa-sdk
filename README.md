@@ -18,9 +18,11 @@
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT License" /></a>
 </p>
 
----
+<p align="center">
+  <a href="https://docs.trepa.io/developers/introduction"><strong>📚 Read the docs →</strong></a>
+</p>
 
-Trepa SDK is the official TypeScript SDK for the [Trepa API](https://docs.trepa.io/developers/introduction).
+---
 
 > [!WARNING]
 > **Experimental.** The SDK is under active development and has not yet hit a stable release.
@@ -33,64 +35,45 @@ npm install @trepa/sdk
 
 ## Quickstart
 
-The SDK wraps every REST endpoint in the [API reference](https://docs.trepa.io/developers/api-endpoints) with full TypeScript types and built-in Solana transaction signing. On top of that, it exposes a declarative interface for writing bot **swarms**:
+Put your credentials in a `.env` file (and add it to `.gitignore`):
+
+```sh
+TREPA_API_KEY=trp_your_api_key
+TREPA_PRIVATE_KEY=your_base58_wallet_private_key
+```
+
+Write the bot:
 
 ```ts
-import {
-  type BotCredentials,
-  formatError,
-  formatNumber,
-  Trepa,
-} from '@trepa/sdk';
-
-const credentials = JSON.parse(
-  readFileSync(resolve(process.cwd(), 'bot.credentials.json'), 'utf8'),
-) as BotCredentials[];
+import { credentialsFromEnv, Trepa } from '@trepa/sdk';
 
 const trepa = new Trepa({
-  credentials,
+  credentials: credentialsFromEnv(),
 });
 
 await trepa.bots.run({
-  predict: async (pool) => {
-    const value = 50_000;
-    const stake = 1;
-
-    return { value, stake };
-  },
-  onStart: ({ me }) => {
-    return `logged in as ${me.username}`;
-  },
-  onPredicted: ({ pool, value, stake }) => {
-    return `${pool.title} → ${formatNumber(value, pool.precision)} @ ${formatNumber(stake, 2)} USDC`;
-  },
-  onPoolSkipped: ({ pool, reason }) => {
-    return `${pool?.title} — ${reason}`;
-  },
-  onError: (err) => {
-    return formatError(err);
-  },
+  predict: (pool) => ({ value: 65_000, stake: pool.min_stake }),
 });
 ```
 
-### Anatomy
+Run it with Node's built-in env loader:
 
-| Piece                                                   | What it is                                                                                                                                                                                                                                                                                                 |
-| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `credentials`                                           | One entry per bot you want to run in parallel. `credentials[0]` doubles as the primary identity for non-bot resource calls (e.g. `trepa.predictions.create`).                                                                                                                                              |
-| `bots.run(factory)`                                     | Spawns one loop per credential and runs them concurrently. Pass a `(slot) => BotOptions` factory when bots need to know their position in the swarm, or a plain `BotOptions` object when every bot does the same thing. Resolves when every loop stops.                                                    |
-| `slot`                                                  | `{ index, count }` — this bot's seat in the swarm. Use it to spread predictions across an outcome range, lay a price ladder, etc.                                                                                                                                                                          |
-| `predict(pool)`                                         | The only required field. Called once per open pool. Return `{ value, stake }` to submit, or `null` to skip. `value` is auto-snapped to `pool.step` and clamped to `[min_outcome, max_outcome]`; `stake` is clamped to `[min_stake, max_stake]`. Throws are caught — the loop survives and `onError` fires. |
-| `onStart` / `onPredicted` / `onPoolSkipped` / `onError` | Optional lifecycle hooks. Return a string to print it on the matching color-coded line (`[READY]`, `[PRED]`, `[SKIP]`, `[ERROR]`), or return nothing to stay silent. The SDK auto-prefixes each line with `[i/N]` when `count > 1`.                                                                        |
+```bash
+node --env-file=.env bot.ts
+```
 
-### The loop
+`bots.run` calls your `predict` once per open Bitcoin pool, signs and submits the prediction with your wallet, then sleeps until the next pool. For a swarm, set `TREPA_API_KEY_1` / `TREPA_PRIVATE_KEY_1`, `_2`, `_3`, ... and `credentialsFromEnv()` returns them all.
 
-Each bot calls `predict` once per **new** pool, sleeps until that pool's end, and repeats. `Ctrl-C` stops the swarm.
+Full guides at **[docs.trepa.io/developers](https://docs.trepa.io/developers/introduction)**:
+
+- [Quickstart](https://docs.trepa.io/developers/quickstart): a real BTC-spot bot in five minutes.
+- [Writing bots](https://docs.trepa.io/developers/writing-bots): the `predict` contract, lifecycle hooks, and swarms.
+- [SDK reference](https://docs.trepa.io/developers/sdk-reference): every resource on the `Trepa` client.
 
 ## Examples
 
-- [`examples/spot-bot`](./examples/spot-bot): the smallest possible bot — one credential, predicts the current BTC spot price (fetched from Binance) for every open Bitcoin pool at min stake. Start here.
-- [`examples/liquidity-bot`](./examples/liquidity-bot): a coordinated bot swarm for the Bitcoin streak that quotes a volatility-sized price ladder around live BTC spot. Computes σ from 7 days of 1-minute Pyth log returns (mirroring the protocol's own calculation), waits until `prediction_end_date − 8 s` for the freshest spot, then positions each bot's slice of `±σ` around it.
+- [`examples/spot-bot`](./examples/spot-bot): one credential, predicts live BTC spot at min stake. Start here.
+- [`examples/liquidity-bot`](./examples/liquidity-bot): a swarm quoting a volatility-sized price ladder around BTC spot.
 
 ## License
 

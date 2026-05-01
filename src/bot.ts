@@ -23,6 +23,78 @@ export interface BotCredentials {
 	privateKey: string;
 }
 
+/**
+ * Load `BotCredentials` from environment variables.
+ *
+ * For a single bot, set `TREPA_API_KEY` and `TREPA_PRIVATE_KEY`. For a
+ * swarm, use indexed pairs starting at `_1`:
+ *
+ * ```sh
+ * TREPA_API_KEY_1=trp_…
+ * TREPA_PRIVATE_KEY_1=…
+ * TREPA_API_KEY_2=trp_…
+ * TREPA_PRIVATE_KEY_2=…
+ * ```
+ *
+ * The helper returns every consecutive indexed pair until one is missing,
+ * or falls back to the unindexed pair otherwise.
+ *
+ * Run your bot with Node's built-in env loader so a `.env` file is picked
+ * up automatically:
+ *
+ * ```sh
+ * node --env-file=.env bot.ts
+ * ```
+ *
+ * Throws `TrepaError` if no credentials are set, or if a pair is half
+ * set (e.g. an `apiKey` without a `privateKey`).
+ */
+export const credentialsFromEnv = (): BotCredentials[] => {
+	const env: Record<string, string | undefined> =
+		typeof process !== 'undefined' && process.env ? process.env : {};
+
+	if (
+		env.TREPA_API_KEY_1 !== undefined ||
+		env.TREPA_PRIVATE_KEY_1 !== undefined
+	) {
+		const credentials: BotCredentials[] = [];
+		for (let i = 1; ; i++) {
+			const apiKey = env[`TREPA_API_KEY_${i}`];
+			const privateKey = env[`TREPA_PRIVATE_KEY_${i}`];
+			if (apiKey === undefined && privateKey === undefined) break;
+			if (!apiKey || !privateKey) {
+				throw new TrepaError(
+					`Incomplete swarm credentials: missing ${
+						apiKey ? `TREPA_PRIVATE_KEY_${i}` : `TREPA_API_KEY_${i}`
+					}.`,
+					{ status: 0, code: 'missing_credentials_env' },
+				);
+			}
+			credentials.push({ apiKey, privateKey });
+		}
+		return credentials;
+	}
+
+	const apiKey = env.TREPA_API_KEY;
+	const privateKey = env.TREPA_PRIVATE_KEY;
+	if (apiKey && privateKey) return [{ apiKey, privateKey }];
+	if (apiKey || privateKey) {
+		throw new TrepaError(
+			`Incomplete credentials: missing ${
+				apiKey ? 'TREPA_PRIVATE_KEY' : 'TREPA_API_KEY'
+			}.`,
+			{ status: 0, code: 'missing_credentials_env' },
+		);
+	}
+
+	throw new TrepaError(
+		'No Trepa credentials in environment. Set TREPA_API_KEY and ' +
+			'TREPA_PRIVATE_KEY, or TREPA_API_KEY_1 / TREPA_PRIVATE_KEY_1 ' +
+			'(_2, _3, ...) for a swarm.',
+		{ status: 0, code: 'missing_credentials_env' },
+	);
+};
+
 /** A bot's seat in the swarm. */
 export interface BotSlot {
 	/** Zero-based index of this bot in the swarm. */
