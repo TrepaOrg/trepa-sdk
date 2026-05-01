@@ -1,11 +1,11 @@
 {
-	"name": "@trepa/example-bitcoin-bot",
+	"name": "@trepa/example-liquidity-bot",
 	"version": "0.0.0",
 	"private": true,
-	"description": "Minimal looping bot template for the Bitcoin Flash streak.",
+	"description": "Liquidity-bootstrapping bot for the Bitcoin Flash streak.",
 	"type": "module",
 	"scripts": {
-		"start": "node bot.strategy.ts"
+		"start": "node --env-file=.env bot.strategy.ts"
 	},
 	"engines": {
 		"node": ">=22"
