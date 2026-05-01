@@ -1,26 +1,24 @@
 # Trepa - TypeScript Examples
 
-Typed TypeScript examples for the [Trepa API](https://docs.trepa.app/developers/introduction). Built on a tiny client generated from the [OpenAPI spec](https://docs.trepa.app/openapi.json), so request and response shapes always match the live API.
+Runnable TypeScript examples for the [Trepa API](https://docs.trepa.app/developers/introduction), built on the [`@trepa/sdk`](../packages/sdk) package.
 
-## Stack
-
-- [`openapi-typescript`](https://github.com/openapi-ts/openapi-typescript) - generates `paths` and `components` types from the OpenAPI spec.
-- [`openapi-fetch`](https://openapi-ts.dev/openapi-fetch/) - tiny typed `fetch` wrapper that consumes those types.
-- [`@solana/web3.js`](https://solana-labs.github.io/solana-web3.js/) + [`bs58`](https://www.npmjs.com/package/bs58) - decode, sign, and re-encode the `VersionedTransaction` returned by every transaction endpoint.
-- [`tsx`](https://tsx.is/) - run the examples without a build step.
-- [`dotenv`](https://www.npmjs.com/package/dotenv) - loads your secrets from `.env`.
-
-The whole project type-checks, including the body and query shapes for every endpoint.
+The SDK ships the typed client (generated from the OpenAPI spec), the cookie-jar middleware, the auth helpers, and the Solana signing helper. Everything you see in `src/examples/` is just thin glue calling that SDK.
 
 ## Setup
 
-```bash
-# 1. install
-pnpm install
+From the workspace root:
 
-# 2. configure
+```bash
+pnpm install                          # one-time install
+pnpm --filter @trepa/sdk gen          # generate the SDK schema (only on spec changes)
+```
+
+Then configure the examples:
+
+```bash
+cd typescript
 cp .env.example .env
-# then edit .env and fill in TREPA_API_KEY and TREPA_PRIVATE_KEY
+# fill in TREPA_API_KEY and TREPA_PRIVATE_KEY
 ```
 
 You will need:
@@ -48,13 +46,10 @@ Each script is self-contained and runnable via a `pnpm example:*` shortcut.
 | [`quickstart.ts`](./src/examples/quickstart.ts)                         | The full Quickstart loop end-to-end.                           |
 
 ```bash
-# Run any example
 pnpm example:session
 pnpm example:find-pool
 pnpm example:place-prediction
 # ...
-
-# Or run the end-to-end quickstart
 pnpm example:quickstart
 ```
 
@@ -62,34 +57,16 @@ pnpm example:quickstart
 
 ```
 typescript/
-  openapi.json              # Snapshot of the spec used for codegen.
   src/
-    api/
-      schema.ts             # Generated. Do not edit by hand.
     lib/
-      client.ts             # Cookie-jar-aware Trepa client (built on openapi-fetch).
-      auth.ts               # startSession / refreshSession / endSession helpers.
-      sign.ts               # Sign a base64 VersionedTransaction with a bs58 key.
-      env.ts                # requireEnv / optionalEnv.
-      log.ts                # Tiny step / log helpers used by examples.
+      env.ts            # requireEnv / optionalEnv, loads .env via dotenv.
+      log.ts            # Tiny step / log helpers used by examples.
     examples/
       01-session.ts ... 09-withdraw.ts
       quickstart.ts
 ```
 
-## Regenerating the client
-
-Whenever the API spec changes, regenerate the typed schema:
-
-```bash
-# Use the snapshot in this repo (good for reproducible builds)
-pnpm gen
-
-# Or pull straight from the public docs site
-pnpm gen:remote
-```
-
-`pnpm gen` writes `src/api/schema.ts` from `./openapi.json`. To bump the snapshot itself, replace `openapi.json` with the latest copy from [docs.trepa.app/openapi.json](https://docs.trepa.app/openapi.json) and rerun `pnpm gen`.
+Everything Trepa-specific (typed client, cookie jar, auth helpers, signing) lives in [`@trepa/sdk`](../packages/sdk).
 
 ## Type-checking
 
@@ -99,9 +76,4 @@ pnpm typecheck
 
 ## How the cookie jar works
 
-Trepa uses cookie-based auth (`trepa-token` for access, `trepa-refresh` for refresh). Browsers handle this automatically; Node's global `fetch` does not. The Trepa client in `lib/client.ts` keeps an in-memory `Map` and:
-
-- attaches a `Cookie` header to every outgoing request via an `onRequest` middleware.
-- captures `Set-Cookie` from every response via an `onResponse` middleware.
-
-That's all there is to it - the rest of the code is cookie-agnostic.
+Trepa uses cookie-based auth (`trepa-token` for access, `trepa-refresh` for refresh). The SDK keeps an in-memory `Map`, attaches it as `Cookie` on outgoing requests, and captures `Set-Cookie` from responses. See `@trepa/sdk` README for details.

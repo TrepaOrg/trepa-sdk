@@ -8,8 +8,8 @@
  *   $ pnpm example:find-pool
  */
 
-import { startSession } from '../lib/auth.ts'
-import { createTrepaClient, unwrap } from '../lib/client.ts'
+import { createTrepaClient, startSession, unwrap } from '@trepa/sdk'
+
 import { optionalEnv, requireEnv } from '../lib/env.ts'
 import { log, step } from '../lib/log.ts'
 

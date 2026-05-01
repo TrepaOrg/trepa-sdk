@@ -1,8 +1,22 @@
 # Trepa Examples
 
-Runnable example code for integrating with the [Trepa API](https://docs.trepa.app/developers/introduction).
+Runnable example code and a publishable SDK for integrating with the [Trepa API](https://docs.trepa.app/developers/introduction).
 
-Each example mirrors a flow from the docs - get a session, find the live Flash Pool, place a prediction, claim a streak reward, withdraw - and is meant to be copy-pasted into your own bot or script.
+## Layout
+
+This repository is a [pnpm workspace](https://pnpm.io/workspaces):
+
+```
+.
+├── packages/
+│   └── sdk/                  # @trepa/sdk - the publishable typed SDK
+└── typescript/               # Runnable TypeScript examples on top of @trepa/sdk
+```
+
+| Path                                       | Purpose                                                                                        |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| [`packages/sdk`](./packages/sdk)           | `@trepa/sdk` - typed Trepa client generated from the OpenAPI spec, plus cookie / signing helpers. |
+| [`typescript`](./typescript)               | Runnable TypeScript examples mirroring the docs Quickstart, built on `@trepa/sdk`.             |
 
 ## Languages
 
@@ -12,7 +26,7 @@ Each example mirrors a flow from the docs - get a session, find the live Flash P
 | Python     | Coming soon | -                             |
 | Go         | Coming soon | -                             |
 
-Have a favourite language we have not covered yet? Open an issue or PR. The examples follow the same numbered structure across languages so they are easy to port.
+When adding a language, mirror the numbered structure (`01-session`, `02-find-pool`, ...) so flows stay easy to compare.
 
 ## What is covered
 
@@ -27,11 +41,41 @@ The examples walk through the same end-to-end loop documented in the [Quickstart
 7. Claim per-pool prize rewards.
 8. Withdraw funds.
 
-Every state-changing endpoint follows the same `create -> sign -> submit` pattern, so once one example clicks the rest fall into place.
+Every state-changing endpoint follows the same `create -> sign -> submit` pattern.
 
-## Typed client from the OpenAPI spec
+## Working in the workspace
 
-The TypeScript examples use a tiny client generated from the published [OpenAPI spec](https://docs.trepa.app/openapi.json), so request/response shapes stay in sync with the live API. See [`typescript/README.md`](./typescript/README.md) for how to regenerate it.
+```bash
+# install everything
+pnpm install
+
+# regenerate the SDK schema from the snapshot at packages/sdk/openapi.json
+pnpm gen
+
+# build @trepa/sdk -> dist/
+pnpm build
+
+# typecheck every package
+pnpm typecheck
+```
+
+Run an example (after copying `typescript/.env.example` to `typescript/.env`):
+
+```bash
+pnpm --filter @trepa/examples-typescript example:quickstart
+```
+
+## Publishing @trepa/sdk
+
+```bash
+# bump version (semantic)
+pnpm --filter @trepa/sdk version <patch|minor|major>
+
+# clean build + publish
+pnpm --filter @trepa/sdk publish
+```
+
+`prepublishOnly` regenerates the schema and rebuilds before publishing. The published artefact only ships `dist/`, the README, and the LICENSE - source and OpenAPI snapshot stay in the repo.
 
 ## Before you start
 

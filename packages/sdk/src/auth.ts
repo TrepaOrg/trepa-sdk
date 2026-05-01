@@ -1,4 +1,4 @@
-import type { TrepaClient } from './client.ts'
+import type { TrepaClient } from './client'
 
 /**
  * Exchanges your API key for `trepa-token` and `trepa-refresh` cookies.

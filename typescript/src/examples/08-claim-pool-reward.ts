@@ -9,11 +9,15 @@
  *   $ pnpm example:claim-pool-reward
  */
 
-import { startSession } from '../lib/auth.ts'
-import { createTrepaClient, unwrap } from '../lib/client.ts'
+import {
+	createTrepaClient,
+	signTransaction,
+	startSession,
+	unwrap,
+} from '@trepa/sdk'
+
 import { optionalEnv, requireEnv } from '../lib/env.ts'
 import { log, step } from '../lib/log.ts'
-import { signTransaction } from '../lib/sign.ts'
 
 const main = async (): Promise<void> => {
 	const apiKey = requireEnv('TREPA_API_KEY')

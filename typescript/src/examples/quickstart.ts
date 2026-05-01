@@ -16,11 +16,16 @@
  *   $ pnpm example:quickstart
  */
 
-import { endSession, startSession } from '../lib/auth.ts'
-import { createTrepaClient, unwrap } from '../lib/client.ts'
+import {
+	createTrepaClient,
+	endSession,
+	signTransaction,
+	startSession,
+	unwrap,
+} from '@trepa/sdk'
+
 import { optionalEnv, requireEnv } from '../lib/env.ts'
 import { log, step } from '../lib/log.ts'
-import { signTransaction } from '../lib/sign.ts'
 
 const STAKE = 1
 const VALUE = 50_000

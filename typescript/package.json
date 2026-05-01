@@ -2,15 +2,13 @@
 	"name": "@trepa/examples-typescript",
 	"private": true,
 	"version": "0.0.0",
-	"description": "TypeScript examples for the Trepa API.",
+	"description": "TypeScript examples for the Trepa API, built on @trepa/sdk.",
 	"license": "MIT",
 	"type": "module",
 	"engines": {
 		"node": ">=20"
 	},
 	"scripts": {
-		"gen": "openapi-typescript ./openapi.json -o ./src/api/schema.ts",
-		"gen:remote": "openapi-typescript https://docs.trepa.app/openapi.json -o ./src/api/schema.ts",
 		"typecheck": "tsc --noEmit",
 		"example": "tsx",
 		"example:session": "tsx src/examples/01-session.ts",
@@ -26,13 +24,11 @@
 	},
 	"dependencies": {
 		"@solana/web3.js": "^1.98.4",
-		"bs58": "^6.0.0",
-		"dotenv": "^17.4.2",
-		"openapi-fetch": "^0.17.0"
+		"@trepa/sdk": "workspace:*",
+		"dotenv": "^17.4.2"
 	},
 	"devDependencies": {
 		"@types/node": "^22.0.0",
-		"openapi-typescript": "^7.13.0",
 		"tsx": "^4.21.0",
 		"typescript": "^5.6.0"
 	}

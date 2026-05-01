@@ -1,5 +1,5 @@
 import createClient, { type Client, type Middleware } from 'openapi-fetch'
-import type { paths } from '../api/schema.ts'
+import type { paths } from './api/schema'
 
 /**
  * Auth between the SDK and the Trepa API is cookie-based: a single call to

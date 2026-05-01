@@ -1,0 +1,5 @@
+src/
+openapi.json
+tsconfig.json
+tsup.config.ts
+*.tsbuildinfo
