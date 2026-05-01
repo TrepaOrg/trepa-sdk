@@ -7,7 +7,7 @@ export default defineConfig({
 	},
 	format: ['esm', 'cjs'],
 	target: 'node20',
-	dts: true,
+	dts: { compilerOptions: { ignoreDeprecations: '6.0' } },
 	sourcemap: false,
 	clean: true,
 	treeshake: true,

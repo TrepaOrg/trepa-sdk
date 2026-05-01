@@ -1,8 +1,5 @@
 {
   "name": "@trepa/example-spot-bot",
-  "version": "0.0.0",
-  "private": true,
-  "description": "Spot price prediction bot for Trepa.",
   "type": "module",
   "scripts": {
     "start": "node bot.strategy.ts"
@@ -15,6 +12,6 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "typescript": "^5.6.0"
+    "typescript": "^6.0.0"
   }
 }
