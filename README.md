@@ -33,39 +33,39 @@ The SDK wraps every REST endpoint in the [API reference](https://docs.trepa.io/d
 
 ```ts
 import {
-	type BotCredentials,
-	formatError,
-	formatNumber,
-	Trepa,
+  type BotCredentials,
+  formatError,
+  formatNumber,
+  Trepa,
 } from '@trepa/sdk';
 
 const credentials = JSON.parse(
-	readFileSync(resolve(process.cwd(), 'bot.credentials.json'), 'utf8'),
+  readFileSync(resolve(process.cwd(), 'bot.credentials.json'), 'utf8'),
 ) as BotCredentials[];
 
 const trepa = new Trepa({
-	credentials,
+  credentials,
 });
 
 await trepa.bots.run({
-	predict: async (pool) => {
-		const value = 50_000;
-		const stake = 1;
+  predict: async (pool) => {
+    const value = 50_000;
+    const stake = 1;
 
-		return { value, stake };
-	},
-	onStart: ({ me }) => {
-		return `logged in as ${me.username}`;
-	},
-	onPredicted: ({ pool, value, stake }) => {
-		return `${pool.title} → ${formatNumber(value, pool.precision)} @ ${formatNumber(stake, 2)} USDC`;
-	},
-	onPoolSkipped: ({ pool, reason }) => {
-		return `${pool?.title} — ${reason}`;
-	},
-	onError: (err) => {
-		return formatError(err);
-	},
+    return { value, stake };
+  },
+  onStart: ({ me }) => {
+    return `logged in as ${me.username}`;
+  },
+  onPredicted: ({ pool, value, stake }) => {
+    return `${pool.title} → ${formatNumber(value, pool.precision)} @ ${formatNumber(stake, 2)} USDC`;
+  },
+  onPoolSkipped: ({ pool, reason }) => {
+    return `${pool?.title} — ${reason}`;
+  },
+  onError: (err) => {
+    return formatError(err);
+  },
 });
 ```
 
