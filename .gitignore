@@ -16,3 +16,5 @@ cookies.txt
 .npm/
 .pnpm-debug.log*
 .yarn/
+
+openapi.json
