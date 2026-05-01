@@ -1,69 +1,69 @@
 {
-	"name": "@trepa/sdk",
-	"version": "0.0.0",
-	"packageManager": "pnpm@10.33.1",
-	"description": "Typed TypeScript SDK for the Trepa API. Generated from the OpenAPI spec, with cookie-aware session handling and Solana transaction signing helpers.",
-	"keywords": [
-		"trepa",
-		"prediction-market",
-		"solana",
-		"sdk",
-		"openapi",
-		"typescript"
-	],
-	"homepage": "https://github.com/TrepaOrg/trepa-sdk#readme",
-	"bugs": {
-		"url": "https://github.com/TrepaOrg/trepa-sdk/issues"
-	},
-	"repository": {
-		"type": "git",
-		"url": "git+https://github.com/TrepaOrg/trepa-sdk.git"
-	},
-	"license": "MIT",
-	"author": "Trepa <leon@trepa.io> (https://www.trepa.app)",
-	"type": "module",
-	"sideEffects": false,
-	"main": "./dist/index.cjs",
-	"module": "./dist/index.js",
-	"types": "./dist/index.d.ts",
-	"exports": {
-		".": {
-			"types": "./dist/index.d.ts",
-			"import": "./dist/index.js",
-			"require": "./dist/index.cjs"
-		},
-		"./schema": {
-			"types": "./dist/schema.d.ts",
-			"import": "./dist/schema.js",
-			"require": "./dist/schema.cjs"
-		},
-		"./package.json": "./package.json"
-	},
-	"files": [
-		"dist",
-		"README.md",
-		"LICENSE"
-	],
-	"engines": {
-		"node": ">=20"
-	},
-	"scripts": {
-		"gen": "node scripts/gen.mjs",
-		"build": "tsup",
-		"typecheck": "tsc --noEmit",
-		"prepublishOnly": "pnpm gen && pnpm build"
-	},
-	"dependencies": {
-		"@solana/kit": "^6.8.0",
-		"openapi-fetch": "^0.17.0"
-	},
-	"devDependencies": {
-		"@types/node": "^22.0.0",
-		"openapi-typescript": "^7.13.0",
-		"tsup": "^8.5.1",
-		"typescript": "^5.6.0"
-	},
-	"publishConfig": {
-		"access": "public"
-	}
+  "name": "@trepa/sdk",
+  "version": "0.0.1",
+  "packageManager": "pnpm@10.33.1",
+  "description": "Typed TypeScript SDK for the Trepa API. Generated from the OpenAPI spec, with cookie-aware session handling and Solana transaction signing helpers.",
+  "keywords": [
+    "trepa",
+    "prediction-market",
+    "solana",
+    "sdk",
+    "openapi",
+    "typescript"
+  ],
+  "homepage": "https://github.com/TrepaOrg/trepa-sdk#readme",
+  "bugs": {
+    "url": "https://github.com/TrepaOrg/trepa-sdk/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TrepaOrg/trepa-sdk.git"
+  },
+  "license": "MIT",
+  "author": "Trepa <leon@trepa.io> (https://www.trepa.app)",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./schema": {
+      "types": "./dist/schema.d.ts",
+      "import": "./dist/schema.js",
+      "require": "./dist/schema.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "gen": "node scripts/gen.mjs",
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "pnpm gen && pnpm build"
+  },
+  "dependencies": {
+    "@solana/kit": "^6.8.0",
+    "openapi-fetch": "^0.17.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "openapi-typescript": "^7.13.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.6.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
 }
