@@ -1,11 +1,7 @@
 import type { components } from './api/schema';
+import { TrepaClient } from './client';
 import { TrepaError } from './errors';
 import { type EventKind, writeEvent } from './format';
-import {
-	AuthResource,
-	PredictionsResource,
-	StreaksResource,
-} from './resources';
 import { Session, type SessionConfig } from './session';
 
 /** A pool that's currently open to predictions, with all its relations. */
@@ -103,12 +99,23 @@ export interface BotSlot {
 	count: number;
 }
 
-/** Context handed to `onStart` once the bot has authenticated. */
+/**
+ * Per-slot context handed to `predict` and the lifecycle hooks. Everything
+ * is bound to this bot's own session — calls on `ctx.trepa` hit the API
+ * as this bot's identity, never as the swarm's first slot.
+ */
 export interface BotContext {
+	/** This bot's seat in the swarm. */
+	slot: BotSlot;
 	/** The user behind this bot's session. */
 	me: UserDto;
-	/** The streak this bot is participating in. */
-	streakId: string;
+	/**
+	 * Slot-scoped Trepa client. Same surface as the outer `Trepa` (minus
+	 * `bots`), but bound to this slot's apiKey + privateKey pair. Use it
+	 * to call any API as this bot — `ctx.trepa.users.statistics(me.id)`,
+	 * `ctx.trepa.rewards.claim(...)`, `ctx.trepa.raw.GET(...)`, etc.
+	 */
+	trepa: TrepaClient;
 }
 
 /** Context handed to `onPredicted` after a successful submission. */
@@ -145,12 +152,19 @@ export interface BotOptions {
 	 * `[pool.min_outcome, pool.max_outcome]`. The `stake` is clamped to
 	 * `[pool.min_stake, pool.max_stake]`.
 	 *
+	 * The second argument is the slot's context (`{ slot, me, trepa }`).
+	 * Use `ctx.trepa` to call any other API endpoint as this specific bot
+	 * — for example `ctx.trepa.users.statistics(ctx.me.id)`.
+	 *
 	 * Errors thrown by `predict` are caught: `onError` is called with the
 	 * thrown value and `onPoolSkipped` is fired with reason `'predict-threw'`.
 	 * The bot loop continues. You don't need to wrap `predict` in your own
 	 * try/catch unless you want to recover with a fallback value.
 	 */
-	predict: (pool: OpenPool) => BotPredictDecision | Promise<BotPredictDecision>;
+	predict: (
+		pool: OpenPool,
+		ctx: BotContext,
+	) => BotPredictDecision | Promise<BotPredictDecision>;
 	/** Polling cadence when no pool is open. Default 5s. */
 	pollIntervalMs?: number;
 	/** Extra wait after a pool's `prediction_end_date` before polling again. Default 250ms. */
@@ -188,12 +202,6 @@ const DEFAULT_POLL_INTERVAL_MS = 5_000;
 const DEFAULT_POST_RESOLVE_BUFFER_MS = 250;
 const SHUTDOWN_SIGNALS = ['SIGINT', 'SIGTERM'] as const;
 
-interface BotResources {
-	auth: AuthResource;
-	streaks: StreaksResource;
-	predictions: PredictionsResource;
-}
-
 /**
  * One or more long-running predictor loops, one per credential passed to
  * `new Trepa({ credentials: [...] })`. Pass a strategy factory that
@@ -209,7 +217,7 @@ interface BotResources {
  * })
  *
  * await trepa.bots.run(({ index, count }) => ({
- *   predict: (pool) => ({
+ *   predict: (pool, { trepa, me }) => ({
  *     value:
  *       pool.min_outcome +
  *       ((index + 0.5) / count) * (pool.max_outcome - pool.min_outcome),
@@ -271,20 +279,16 @@ export class Bots {
 				this.credentials.map(async (creds, index) => {
 					const slot: BotSlot = { index, count };
 					const session = new Session({ ...this.sessionDefaults, ...creds });
-					const resources: BotResources = {
-						auth: new AuthResource(session),
-						streaks: new StreaksResource(session),
-						predictions: new PredictionsResource(session),
-					};
+					const client = new TrepaClient(session);
 					const opts = withTag(slot, factory(slot));
 					const signal = opts.signal
 						? AbortSignal.any([swarmAc.signal, opts.signal])
 						: swarmAc.signal;
 					try {
-						await runOne(resources, opts, signal);
+						await runOne(slot, client, opts, signal);
 					} finally {
 						try {
-							await resources.auth.logout();
+							await client.logout();
 						} catch (err) {
 							emit('error', opts.onError?.(err));
 						}
@@ -328,9 +332,10 @@ type BotState =
 	| { kind: 'stopped' };
 
 interface MachineCtx {
-	resources: BotResources;
+	client: TrepaClient;
 	options: BotOptions;
 	signal: AbortSignal;
+	publicCtx: BotContext;
 	streakId: string;
 	pollIntervalMs: number;
 	postResolveBufferMs: number;
@@ -339,18 +344,21 @@ interface MachineCtx {
 }
 
 const runOne = async (
-	resources: BotResources,
+	slot: BotSlot,
+	client: TrepaClient,
 	options: BotOptions,
 	signal: AbortSignal,
 ): Promise<void> => {
-	const me = await resources.auth.me();
-	const streakId = (await resources.streaks.bitcoin()).id;
-	emit('ready', options.onStart?.({ me, streakId }));
+	const me = await client.auth.me();
+	const streakId = (await client.streaks.bitcoin()).id;
+	const publicCtx: BotContext = { slot, me, trepa: client };
+	emit('ready', options.onStart?.(publicCtx));
 
 	const ctx: MachineCtx = {
-		resources,
+		client,
 		options,
 		signal,
+		publicCtx,
 		streakId,
 		pollIntervalMs: options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS,
 		postResolveBufferMs:
@@ -405,7 +413,7 @@ const advance = async (state: BotState, ctx: MachineCtx): Promise<BotState> => {
 		case 'predicting': {
 			ctx.seen.add(state.pool.id);
 			const deadlineMs = new Date(state.pool.prediction_end_date).getTime();
-			await tryPredict(ctx.resources, state.pool, ctx.options, deadlineMs);
+			await tryPredict(ctx, state.pool, deadlineMs);
 			return { kind: 'awaiting_end', pool: state.pool };
 		}
 
@@ -432,8 +440,7 @@ const classify = async (ctx: MachineCtx): Promise<BotState> => {
 	let pool: OpenPool | null;
 	try {
 		pool =
-			(await ctx.resources.streaks.poolDetails(ctx.streakId)).current_pool ??
-			null;
+			(await ctx.client.streaks.poolDetails(ctx.streakId)).current_pool ?? null;
 	} catch (err) {
 		return { kind: 'recovering_from_error', err };
 	}
@@ -475,15 +482,15 @@ const classify = async (ctx: MachineCtx): Promise<BotState> => {
 };
 
 const tryPredict = async (
-	resources: BotResources,
+	ctx: MachineCtx,
 	pool: OpenPool,
-	options: BotOptions,
 	deadlineMs: number,
 ): Promise<void> => {
+	const { options } = ctx;
 	let decision: BotPredictDecision;
 
 	try {
-		decision = await options.predict(pool);
+		decision = await options.predict(pool, ctx.publicCtx);
 	} catch (err) {
 		emit('error', options.onError?.(err));
 		emit('skip', options.onPoolSkipped?.({ pool, reason: 'predict-threw' }));
@@ -517,7 +524,7 @@ const tryPredict = async (
 	const stake = clamp(decision.stake, pool.min_stake, pool.max_stake);
 
 	try {
-		await resources.predictions.create({ poolId: pool.id, stake, value });
+		await ctx.client.predictions.create({ poolId: pool.id, stake, value });
 		emit('pred', options.onPredicted?.({ pool, value, stake }));
 	} catch (err) {
 		emit('error', options.onError?.(err));

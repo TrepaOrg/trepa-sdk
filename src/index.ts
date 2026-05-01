@@ -1,4 +1,5 @@
 export { Trepa, type TrepaConfig } from './trepa';
+export { TrepaClient } from './client';
 export { TrepaError, isTrepaError } from './errors';
 export { signTransaction } from './sign';
 export { Bots, credentialsFromEnv } from './bot';
