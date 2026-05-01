@@ -1,5 +1,5 @@
 {
-	"name": "@trepa/examples-typescript",
+	"name": "@trepa/sdk-examples",
 	"private": true,
 	"version": "0.0.0",
 	"description": "TypeScript examples for the Trepa API, built on @trepa/sdk.",

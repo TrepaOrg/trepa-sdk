@@ -1,0 +1,123 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Semver to release (e.g. 0.2.0). Must be greater than the current version.'
+        required: true
+        type: string
+      dry_run:
+        description: 'Skip the actual npm publish (everything else still runs).'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - name: Validate version input
+        run: |
+          if ! echo "${{ inputs.version }}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::'${{ inputs.version }}' is not a valid semver."
+            exit 1
+          fi
+
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          registry-url: 'https://registry.npmjs.org'
+          scope: '@trepa'
+
+      - name: Ensure jq is available
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Compare against current version
+        id: compare
+        run: |
+          CURRENT=$(jq -r .version package.json)
+          REQUESTED="${{ inputs.version }}"
+          echo "Current: $CURRENT, requested: $REQUESTED"
+          HIGHEST=$(printf '%s\n%s\n' "$CURRENT" "$REQUESTED" | sort -V | tail -n 1)
+          if [ "$HIGHEST" != "$REQUESTED" ] || [ "$CURRENT" = "$REQUESTED" ]; then
+            echo "::error::Requested version ($REQUESTED) must be strictly greater than current ($CURRENT)."
+            exit 1
+          fi
+          echo "current=$CURRENT" >> $GITHUB_OUTPUT
+
+      - name: Bump package.json to ${{ inputs.version }}
+        run: |
+          jq --arg v "${{ inputs.version }}" '.version = $v' package.json > package.json.tmp
+          mv package.json.tmp package.json
+          echo "Bumped version: ${{ steps.compare.outputs.current }} -> ${{ inputs.version }}"
+
+      - name: Generate schema from openapi.json
+        run: pnpm gen
+
+      - name: Build SDK (tsup)
+        run: pnpm build
+
+      - name: Type-check
+        run: pnpm typecheck
+
+      - name: Verify pack contents
+        run: |
+          pnpm pack --pack-destination /tmp/pack
+          ls -la /tmp/pack
+          tar -tzf /tmp/pack/trepa-sdk-${{ inputs.version }}.tgz | sort
+
+      - name: Publish to npm
+        if: ${{ !inputs.dry_run }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: pnpm publish --no-git-checks --access public --provenance
+
+      - name: Commit version bump and regenerated schema
+        if: ${{ !inputs.dry_run }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json src/api/schema.ts
+          if git diff --cached --quiet; then
+            echo "Nothing to commit."
+          else
+            git commit -m "chore(release): @trepa/sdk@${{ inputs.version }}"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
+
+      - name: Tag release
+        if: ${{ !inputs.dry_run }}
+        run: |
+          git tag "v${{ inputs.version }}"
+          git push origin "v${{ inputs.version }}"
+
+      - name: Create GitHub Release
+        if: ${{ !inputs.dry_run }}
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: v${{ inputs.version }}
+          name: v${{ inputs.version }}
+          generate_release_notes: true

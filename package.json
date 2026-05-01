@@ -1,17 +1,72 @@
 {
-	"name": "trepa-examples-root",
-	"private": true,
-	"version": "0.0.0",
-	"description": "Workspace root for the Trepa examples and SDK.",
+	"name": "@trepa/sdk",
+	"version": "0.1.0",
+	"description": "Typed TypeScript SDK for the Trepa API. Generated from the OpenAPI spec, with cookie-aware session handling and Solana transaction signing helpers.",
+	"keywords": [
+		"trepa",
+		"prediction-market",
+		"solana",
+		"sdk",
+		"openapi",
+		"typescript"
+	],
+	"homepage": "https://github.com/TrepaOrg/trepa-sdk#readme",
+	"bugs": {
+		"url": "https://github.com/TrepaOrg/trepa-sdk/issues"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/TrepaOrg/trepa-sdk.git"
+	},
 	"license": "MIT",
+	"author": "Trepa <jong@trepa.io> (https://www.trepa.app)",
+	"type": "module",
+	"sideEffects": false,
+	"main": "./dist/index.cjs",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js",
+			"require": "./dist/index.cjs"
+		},
+		"./schema": {
+			"types": "./dist/schema.d.ts",
+			"import": "./dist/schema.js",
+			"require": "./dist/schema.cjs"
+		},
+		"./package.json": "./package.json"
+	},
+	"files": [
+		"dist",
+		"README.md",
+		"LICENSE"
+	],
 	"engines": {
-		"node": ">=20",
-		"pnpm": ">=10"
+		"node": ">=20"
 	},
 	"scripts": {
-		"gen": "pnpm --filter @trepa/sdk gen",
-		"build": "pnpm --filter @trepa/sdk build",
-		"typecheck": "pnpm -r typecheck",
-		"clean": "pnpm -r exec rm -rf dist .tsbuildinfo node_modules/.cache"
+		"gen": "openapi-typescript ./openapi.json -o ./src/api/schema.ts",
+		"build": "tsup",
+		"typecheck": "tsc --noEmit",
+		"prepublishOnly": "pnpm gen && pnpm build"
+	},
+	"dependencies": {
+		"bs58": "^6.0.0",
+		"openapi-fetch": "^0.17.0"
+	},
+	"peerDependencies": {
+		"@solana/web3.js": "^1.98.0"
+	},
+	"devDependencies": {
+		"@solana/web3.js": "^1.98.4",
+		"@types/node": "^22.0.0",
+		"openapi-typescript": "^7.13.0",
+		"tsup": "^8.5.1",
+		"typescript": "^5.6.0"
+	},
+	"publishConfig": {
+		"access": "public"
 	}
 }

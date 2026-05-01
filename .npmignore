@@ -1,0 +1,11 @@
+src/
+examples/
+openapi.json
+tsconfig.json
+tsup.config.ts
+pnpm-workspace.yaml
+pnpm-lock.yaml
+.editorconfig
+.github/
+.tsbuildinfo
+*.log

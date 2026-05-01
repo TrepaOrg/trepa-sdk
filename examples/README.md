@@ -1,22 +1,23 @@
-# Trepa - TypeScript Examples
+# @trepa/sdk - Examples
 
-Runnable TypeScript examples for the [Trepa API](https://docs.trepa.app/developers/introduction), built on the [`@trepa/sdk`](../packages/sdk) package.
+Runnable TypeScript examples for the [Trepa API](https://docs.trepa.app/developers/introduction), built on top of [`@trepa/sdk`](../) (consumed via the workspace).
 
-The SDK ships the typed client (generated from the OpenAPI spec), the cookie-jar middleware, the auth helpers, and the Solana signing helper. Everything you see in `src/examples/` is just thin glue calling that SDK.
+The SDK ships the typed client (generated from the OpenAPI spec), the cookie-jar middleware, the auth helpers, and the Solana signing helper. Everything in `src/examples/` is thin glue around that SDK.
 
 ## Setup
 
-From the workspace root:
+From the repo root:
 
 ```bash
-pnpm install                          # one-time install
-pnpm --filter @trepa/sdk gen          # generate the SDK schema (only on spec changes)
+pnpm install     # installs both @trepa/sdk and @trepa/sdk-examples
+pnpm gen         # regenerate the SDK schema from openapi.json (only on spec changes)
+pnpm build       # build @trepa/sdk -> dist (so examples can resolve it)
 ```
 
 Then configure the examples:
 
 ```bash
-cd typescript
+cd examples
 cp .env.example .env
 # fill in TREPA_API_KEY and TREPA_PRIVATE_KEY
 ```
@@ -56,7 +57,7 @@ pnpm example:quickstart
 ## Project layout
 
 ```
-typescript/
+examples/
   src/
     lib/
       env.ts            # requireEnv / optionalEnv, loads .env via dotenv.
@@ -66,14 +67,10 @@ typescript/
       quickstart.ts
 ```
 
-Everything Trepa-specific (typed client, cookie jar, auth helpers, signing) lives in [`@trepa/sdk`](../packages/sdk).
+Everything Trepa-specific (typed client, cookie jar, auth helpers, signing) lives in [`@trepa/sdk`](../).
 
 ## Type-checking
 
 ```bash
 pnpm typecheck
 ```
-
-## How the cookie jar works
-
-Trepa uses cookie-based auth (`trepa-token` for access, `trepa-refresh` for refresh). The SDK keeps an in-memory `Map`, attaches it as `Cookie` on outgoing requests, and captures `Set-Cookie` from responses. See `@trepa/sdk` README for details.

@@ -1,6 +1,8 @@
 node_modules/
 dist/
-build/
+.tsbuildinfo
+*.log
+
 .env
 .env.local
 .env.*.local
@@ -10,7 +12,6 @@ cookies.txt
 .idea/
 .vscode/
 
-*.log
 .npm/
 .pnpm-debug.log*
 .yarn/
