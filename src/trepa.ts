@@ -23,8 +23,6 @@ export interface TrepaConfig {
 	credentials?: readonly BotCredentials[];
 	/** Override the API origin (defaults to production). */
 	baseUrl?: string;
-	/** Override the underlying fetch implementation (e.g. node-fetch, undici). */
-	fetch?: typeof fetch;
 }
 
 /**
@@ -67,7 +65,6 @@ export class Trepa {
 			apiKey: primary?.apiKey,
 			privateKey: primary?.privateKey,
 			baseUrl: config.baseUrl,
-			fetch: config.fetch,
 		});
 		this.auth = new AuthResource(this.session);
 		this.users = new UsersResource(this.session);
@@ -78,7 +75,6 @@ export class Trepa {
 		this.withdrawals = new WithdrawalsResource(this.session);
 		this.bots = new Bots(credentials, {
 			baseUrl: config.baseUrl,
-			fetch: config.fetch,
 		});
 	}
 

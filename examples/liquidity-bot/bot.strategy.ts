@@ -27,14 +27,13 @@ import { fetchBtcPrice, fetchBtcStdLogReturns } from './utils.ts';
  * curve looks alive across the full ±σ outcome region.
  */
 
-const LEAD_TIME_MS = 8_000;
-const CREDENTIALS_PATH = process.argv[2] ?? 'bots.credentials.json';
-
 const credentials = JSON.parse(
-	readFileSync(resolve(process.cwd(), CREDENTIALS_PATH), 'utf8'),
+	readFileSync(resolve(process.cwd(), 'bots.credentials.json'), 'utf8'),
 ) as BotCredentials[];
 
 const trepa = new Trepa({ credentials });
+
+const LEAD_TIME_MS = 8_000;
 
 await trepa.bots.run(({ index, count }) => ({
 	predict: async (pool) => {

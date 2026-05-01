@@ -50,8 +50,6 @@ export interface SessionConfig {
 	privateKey?: string;
 	/** Override the API origin (defaults to production). */
 	baseUrl?: string;
-	/** Override the underlying fetch implementation (e.g. node-fetch, undici). */
-	fetch?: typeof fetch;
 }
 
 interface FetchResult<T> {
@@ -82,7 +80,6 @@ export class Session {
 
 		this.client = createClient<paths>({
 			baseUrl: this.baseUrl,
-			fetch: config.fetch,
 		});
 
 		const cookieMiddleware: Middleware = {

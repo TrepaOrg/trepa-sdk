@@ -15,9 +15,7 @@ const ONE_DAY_SEC = 24 * 3600;
 const SEVEN_DAYS_SEC = 7 * ONE_DAY_SEC;
 const MIN_COVERAGE_RATIO = 0.95;
 const MAX_BOUNDARY_DRIFT_SEC = 120;
-const MIN_SAMPLE_COUNT = Math.floor(
-	(SEVEN_DAYS_SEC / 60) * MIN_COVERAGE_RATIO,
-);
+const MIN_SAMPLE_COUNT = Math.floor((SEVEN_DAYS_SEC / 60) * MIN_COVERAGE_RATIO);
 
 const STDDEV_CACHE_TTL_MS = 30 * 60 * 1000;
 let cachedStddev: { value: number; computedAt: number } | null = null;
