@@ -49,20 +49,24 @@ await trepa.predictions.update({
 	value: 55_000,
 })
 
-// 5. Once the pool resolves, claim the reward.
-const [resolved] = await trepa.users.predictions(me.id, {
+// 5. (Optional) Claim a reward manually. Rewards from resolved pools are
+//    auto-claimed to your balance, so you only need this if you want to
+//    settle a specific prediction yourself.
+/* const [resolved] = await trepa.users.predictions(me.id, {
 	filter_by: ['RESOLVED'],
 	includes: ['pool', 'reward'],
 	limit: 1,
 })
+
 if (resolved?.reward && !resolved.reward.is_claimed && resolved.pool) {
 	await trepa.rewards.claim({
 		poolId: resolved.pool.id,
 		rewardId: resolved.reward.id,
 	})
-}
+} */
 
-// 6. Withdraw your USDC to an external wallet whenever you want (optional).
+// 6. (Optional) Withdraw USDC from your Trepa balance to any external
+//    Solana wallet. `mintAddress` below is USDC on Solana mainnet.
 /* await trepa.withdrawals.create({
 	toAddress: 'YourSolanaWalletPubkey',
 	amount: 10,
