@@ -163,8 +163,8 @@ export interface BotOptions {
 	 * cleanly stop every bot in the swarm. Pass your own signal when you
 	 * need to control shutdown yourself or coordinate with other lifecycles.
 	 *
-	 * On shutdown — whether via this signal, `SIGINT`/`SIGTERM`, or an
-	 * unhandled error — each bot's session is invalidated server-side via
+	 * On shutdown (whether via this signal, `SIGINT`/`SIGTERM`, or an
+	 * unhandled error), each bot's session is invalidated server-side via
 	 * `auth.logout()` before `bots.run` resolves. Logout failures are
 	 * routed through `onError` and never block the swarm from exiting.
 	 */
