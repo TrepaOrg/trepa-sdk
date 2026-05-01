@@ -1,6 +1,6 @@
-# liquidity-bot
+# spot-bot
 
-A bot swarm that quotes a volatility-sized ladder around BTC spot. See [`bot.strategy.ts`](./bot.strategy.ts) for the strategy.
+The smallest possible Trepa bot; one credential, predicts the current BTC spot price (fetched from Binance) for every open Bitcoin pool at min stake. See [`bot.strategy.ts`](./bot.strategy.ts).
 
 ## Run
 

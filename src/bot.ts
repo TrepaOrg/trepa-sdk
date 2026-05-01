@@ -41,7 +41,8 @@ export interface BotSkippedInfo {
 		| 'predict-returned-null'
 		| 'invalid-value'
 		| 'invalid-stake'
-		| 'predict-threw';
+		| 'predict-threw'
+		| 'predict-too-late';
 }
 
 export interface BotOptions {
@@ -58,7 +59,7 @@ export interface BotOptions {
 	 * try/catch unless you want to recover with a fallback value.
 	 */
 	predict: (pool: OpenPool) => BotPredictDecision | Promise<BotPredictDecision>;
-	/** Polling cadence when no pool is open. Default 15s. */
+	/** Polling cadence when no pool is open. Default 5s. */
 	pollIntervalMs?: number;
 	/** Extra wait after a pool's `prediction_end_date` before polling again. Default 5s. */
 	postResolveBufferMs?: number;
@@ -86,7 +87,7 @@ export interface BotOptions {
 	onError?: (err: unknown) => string | void;
 }
 
-const DEFAULT_POLL_INTERVAL_MS = 15_000;
+const DEFAULT_POLL_INTERVAL_MS = 5_000;
 const DEFAULT_POST_RESOLVE_BUFFER_MS = 5_000;
 const SHUTDOWN_SIGNALS = ['SIGINT', 'SIGTERM'] as const;
 
@@ -243,9 +244,24 @@ const runOne = async (
 				continue;
 			}
 
+			// Predictions are only valid inside `[prediction_start_date,
+			// prediction_end_date)`. The API returns 403 outside that window.
+			const startMs = new Date(pool.prediction_start_date).getTime();
+			const endMs = new Date(pool.prediction_end_date).getTime();
+
+			if (Date.now() < startMs) {
+				await sleep(startMs - Date.now(), signal);
+				continue;
+			}
+
+			if (Date.now() >= endMs) {
+				await sleep(pollIntervalMs, signal);
+				continue;
+			}
+
 			if (!seen.has(pool.id)) {
 				seen.add(pool.id);
-				await tryPredict(resources, pool, options);
+				await tryPredict(resources, pool, options, endMs);
 			}
 
 			await sleepUntil(
@@ -265,6 +281,7 @@ const tryPredict = async (
 	resources: BotResources,
 	pool: OpenPool,
 	options: BotOptions,
+	deadlineMs: number,
 ): Promise<void> => {
 	let decision: BotPredictDecision;
 
@@ -291,6 +308,14 @@ const tryPredict = async (
 
 	if (!Number.isFinite(decision.stake)) {
 		emit('skip', options.onPoolSkipped?.({ pool, reason: 'invalid-stake' }));
+		return;
+	}
+
+	// Re-check the window: `predict()` can do async work (fetch price,
+	// wait until close-N seconds, etc.) that pushes us past
+	// `prediction_end_date`, in which case the API would 403 us.
+	if (Date.now() >= deadlineMs) {
+		emit('skip', options.onPoolSkipped?.({ pool, reason: 'predict-too-late' }));
 		return;
 	}
 

@@ -70,7 +70,7 @@ await trepa.bots.run(({ index, count }) => ({
 		return `${pool.title} → ${formatNumber(value, pool.precision)} @ ${formatNumber(stake, 2)} USDC`;
 	},
 	onPoolSkipped: ({ pool, reason }) => {
-		return `${pool?.title ?? '(no pool open)'} — ${reason}`;
+		return `${pool?.title} — ${reason}`;
 	},
 	onError: (err) => {
 		return formatError(err);

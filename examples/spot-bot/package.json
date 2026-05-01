@@ -1,8 +1,8 @@
 {
-  "name": "@trepa/example-midpoint-bot",
+  "name": "@trepa/example-spot-bot",
   "version": "0.0.0",
   "private": true,
-  "description": "Smallest possible Trepa bot; predicts the midpoint of every open Bitcoin pool.",
+  "description": "Smallest possible Trepa bot; predicts the current BTC spot price for every open Bitcoin pool.",
   "type": "module",
   "scripts": {
     "start": "node bot.strategy.ts"
