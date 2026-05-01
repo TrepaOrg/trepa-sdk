@@ -1,6 +1,6 @@
 {
   "name": "@trepa/sdk",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "packageManager": "pnpm@10.33.1",
   "description": "Typed TypeScript SDK for the Trepa API. Generated from the OpenAPI spec, with cookie-aware session handling and Solana transaction signing helpers.",
   "keywords": [
