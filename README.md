@@ -150,7 +150,6 @@ trepa-sdk/
 
 ```bash
 pnpm gen          # regenerate ./src/api/schema.ts from ./openapi.json
-pnpm gen:remote   # alternatively, pull straight from docs.trepa.app
 pnpm build        # produce ./dist
 pnpm typecheck    # sanity check
 ```
