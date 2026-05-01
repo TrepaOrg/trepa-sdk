@@ -32,29 +32,41 @@ npm install @trepa/sdk
 The SDK wraps every REST endpoint in the [API reference](https://docs.trepa.io/developers/api-endpoints) with full TypeScript types and built-in Solana transaction signing. On top of that, it exposes a declarative interface for writing bot **swarms**:
 
 ```ts
-import { Trepa, formatNumber } from '@trepa/sdk';
+import {
+	type BotCredentials,
+	formatError,
+	formatNumber,
+	Trepa,
+} from '@trepa/sdk';
+
+const credentials = JSON.parse(
+	readFileSync(resolve(process.cwd(), 'bot.credentials.json'), 'utf8'),
+) as BotCredentials[];
 
 const trepa = new Trepa({
-  credentials: [
-    { apiKey: '...', privateKey: '...' },
-    { apiKey: '...', privateKey: '...' },
-    { apiKey: '...', privateKey: '...' },
-  ],
+	credentials,
 });
 
-await trepa.bots.run(({ index, count }) => ({
-  predict: (pool) => ({
-    value:
-      pool.min_outcome +
-      ((index + 0.5) / count) * (pool.max_outcome - pool.min_outcome),
-    stake: pool.min_stake,
-  }),
-  onStart: ({ me }) => `logged in as @${me.username}`,
-  onPredicted: ({ pool, value, stake }) =>
-    `${pool.title} → ${formatNumber(value, pool.precision)} @ ${formatNumber(stake, 2)} USDC`,
-  onPoolSkipped: ({ pool, reason }) => `${pool?.title} — ${reason}`,
-  onError: (err) => (err instanceof Error ? err.message : String(err)),
-}));
+await trepa.bots.run({
+	predict: async (pool) => {
+		const value = 50_000;
+		const stake = 1;
+
+		return { value, stake };
+	},
+	onStart: ({ me }) => {
+		return `logged in as ${me.username}`;
+	},
+	onPredicted: ({ pool, value, stake }) => {
+		return `${pool.title} → ${formatNumber(value, pool.precision)} @ ${formatNumber(stake, 2)} USDC`;
+	},
+	onPoolSkipped: ({ pool, reason }) => {
+		return `${pool?.title} — ${reason}`;
+	},
+	onError: (err) => {
+		return formatError(err);
+	},
+});
 ```
 
 ### Anatomy
