@@ -35,7 +35,38 @@ await trepa.predictions.create({
 	value: 50_000,
 })
 
-// 6. End the session when you're done.
+// 4. Tweak the prediction while the pool is still open.
+const [active] = await trepa.users.predictions(me.id, {
+	filter_by: ['ACTIVE'],
+	limit: 1,
+})
+
+await trepa.predictions.update({
+	predictionId: active.id,
+	value: 55_000,
+})
+
+// 5. Once the pool resolves, claim the reward.
+const [resolved] = await trepa.users.predictions(me.id, {
+	filter_by: ['RESOLVED'],
+	includes: ['pool', 'reward'],
+	limit: 1,
+})
+if (resolved?.reward && !resolved.reward.is_claimed && resolved.pool) {
+	await trepa.rewards.claim({
+		poolId: resolved.pool.id,
+		rewardId: resolved.reward.id,
+	})
+}
+
+// 6. Withdraw your USDC to an external wallet whenever you want (optional).
+/* await trepa.withdrawals.create({
+	toAddress: 'YourSolanaWalletPubkey',
+	amount: 10,
+	mintAddress: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+}) */
+
+// 7. End the session when you're done.
 await trepa.logout()
 ```
 
