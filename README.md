@@ -79,6 +79,28 @@ await trepa.logout()
 
 For the full set of endpoints and walkthroughs of every flow, see the [docs](https://docs.trepa.app/developers/introduction).
 
+## Building a bot
+
+For long-running bots, skip the manual loop and use `trepa.bot.run`. It handles polling, dedup, value-snapping, and graceful shutdown — you only write a `predict(pool)` callback.
+
+```ts
+import { Trepa } from '@trepa/sdk'
+
+const trepa = new Trepa({
+	apiKey: process.env.TREPA_API_KEY!,
+	privateKey: process.env.TREPA_PRIVATE_KEY!,
+})
+
+await trepa.bot.run({
+	stake: 1,
+	predict: (pool) => (pool.min_outcome + pool.max_outcome) / 2,
+	onPredicted: ({ pool, value, stake }) =>
+		console.log(`[${pool.title}] ${value} @ ${stake}`),
+})
+```
+
+`predict` can return a bare `number`, `{ value, stake }` to override the stake, or `null` to skip the pool. The returned value is automatically snapped to `pool.step` and clamped to the pool's outcome range. By default the bot installs `SIGINT` and `SIGTERM` handlers so `Ctrl-C` and container shutdowns stop the loop cleanly — pass your own `signal: AbortSignal` if you want to manage shutdown yourself. See [`examples/bitcoin-bot`](./examples/bitcoin-bot) for a runnable template.
+
 ## License
 
 [MIT](./LICENSE)

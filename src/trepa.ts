@@ -10,6 +10,7 @@ import {
 	UsersResource,
 	WithdrawalsResource,
 } from './resources'
+import { Bot } from './bot'
 
 export type TrepaConfig = SessionConfig
 
@@ -44,6 +45,7 @@ export class Trepa {
 	readonly predictions: PredictionsResource
 	readonly rewards: RewardsResource
 	readonly withdrawals: WithdrawalsResource
+	readonly bot: Bot
 
 	constructor(config: TrepaConfig = {}) {
 		this.session = new Session(config)
@@ -54,6 +56,11 @@ export class Trepa {
 		this.predictions = new PredictionsResource(this.session)
 		this.rewards = new RewardsResource(this.session)
 		this.withdrawals = new WithdrawalsResource(this.session)
+		this.bot = new Bot(this.session, {
+			auth: this.auth,
+			streaks: this.streaks,
+			predictions: this.predictions,
+		})
 	}
 
 	/** The user behind the current session. Shortcut for `trepa.auth.me()`. */
