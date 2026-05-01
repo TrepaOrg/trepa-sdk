@@ -66,26 +66,9 @@ export class UsersResource extends Resource {
 		)
 	}
 
-	async settings(id: string): Promise<Schema<'SettingsDto'>> {
-		return this.session.request(() =>
-			this.client.GET('/users/{id}/settings', { params: { path: { id } } }),
-		)
-	}
-
 	async statistics(id: string): Promise<Schema<'UserStatisticsDto'>> {
 		return this.session.request(() =>
 			this.client.GET('/users/{id}/statistics', { params: { path: { id } } }),
-		)
-	}
-
-	async leaderboardRank(
-		id: string,
-		params: Query<'UsersController_getUserLeaderboardRank'> = {},
-	): Promise<Schema<'LeaderboardEntryDto'>> {
-		return this.session.request(() =>
-			this.client.GET('/users/{id}/leaderboard-rank', {
-				params: { path: { id }, query: params },
-			}),
 		)
 	}
 
@@ -97,28 +80,6 @@ export class UsersResource extends Resource {
 		)
 	}
 
-	async pnl(
-		userId: string,
-		params: RequiredQuery<'UsersController_getProfitsAndLosses'>,
-	): Promise<Schema<'PnlDto'>> {
-		return this.session.request(() =>
-			this.client.GET('/users/{user_id}/pnl', {
-				params: { path: { user_id: userId }, query: params },
-			}),
-		)
-	}
-
-	async transactionHistory(
-		id: string,
-		params: Query<'UsersController_getTransactionHistory'> = {},
-	): Promise<Schema<'TransactionHistoryResponseDto'>> {
-		return this.session.request(() =>
-			this.client.GET('/users/{id}/transaction-history', {
-				params: { path: { id }, query: params },
-			}),
-		)
-	}
-
 	async streakDetails(
 		id: string,
 		streakId: string,
@@ -126,27 +87,6 @@ export class UsersResource extends Resource {
 		return this.session.request(() =>
 			this.client.GET('/users/{id}/streak-details/{streak_id}', {
 				params: { path: { id, streak_id: streakId } },
-			}),
-		)
-	}
-
-	async notifications(
-		userId: string,
-		params: Query<'UsersController_findMany'> = {},
-	): Promise<Schema<'NotificationWithRelationsDto'>[]> {
-		return this.session.request(() =>
-			this.client.GET('/users/{user_id}/notifications', {
-				params: { path: { user_id: userId }, query: params },
-			}),
-		)
-	}
-
-	async notificationCount(
-		userId: string,
-	): Promise<Schema<'NotificationCountDto'>> {
-		return this.session.request(() =>
-			this.client.GET('/users/{user_id}/notifications/count', {
-				params: { path: { user_id: userId } },
 			}),
 		)
 	}
@@ -168,34 +108,6 @@ export class PoolsResource extends Resource {
 		return this.session.request(() =>
 			this.client.GET('/pools/{id}', {
 				params: { path: { id }, query: params },
-			}),
-		)
-	}
-
-	async result(id: string): Promise<Schema<'PoolResultDto'>> {
-		return this.session.request(() =>
-			this.client.GET('/pools/{id}/result', { params: { path: { id } } }),
-		)
-	}
-
-	async ranking(
-		id: string,
-		params: Query<'PoolsController_getPoolRanking'> = {},
-	): Promise<Schema<'PoolRankingResponseDto'>> {
-		return this.session.request(() =>
-			this.client.GET('/pools/{id}/ranking', {
-				params: { path: { id }, query: params },
-			}),
-		)
-	}
-
-	async winningRange(
-		id: string,
-		userId: string,
-	): Promise<Schema<'WinningRangeDto'>> {
-		return this.session.request(() =>
-			this.client.GET('/pools/{id}/winning-range', {
-				params: { path: { id }, query: { user_id: userId } },
 			}),
 		)
 	}
@@ -380,8 +292,8 @@ export class PredictionsResource extends Resource {
 export class RewardsResource extends Resource {
 	/**
 	 * Claim a pool reward in one call. The `poolId` is used to build the
-	 * transaction; the `rewardId` (look it up via
-	 * `users.transactionHistory` or `pools.result`) is required to submit it.
+	 * transaction; the `rewardId` is required to submit it (the API surfaces
+	 * it on the prediction's relations — see `users.predictions(id, { includes: ['reward'] })`).
 	 */
 	async claim(args: {
 		poolId: string
@@ -447,28 +359,6 @@ export class WithdrawalsResource extends Resource {
 					},
 				}),
 			'Failed to submit the withdraw transaction',
-		)
-	}
-}
-
-export class LeaderboardResource extends Resource {
-	async list(
-		params: Query<'LeaderboardController_aggregateLeaderboard'> = {},
-	): Promise<Schema<'LeaderboardEntryDto'>[]> {
-		return this.session.request(() =>
-			this.client.GET('/leaderboard', { params: { query: params } }),
-		)
-	}
-}
-
-export class TemplatesResource extends Resource {
-	async list(): Promise<Schema<'TemplateDto'>[]> {
-		return this.session.request(() => this.client.GET('/templates'))
-	}
-
-	async get(id: string): Promise<Schema<'TemplateDto'>> {
-		return this.session.request(() =>
-			this.client.GET('/templates/{id}', { params: { path: { id } } }),
 		)
 	}
 }

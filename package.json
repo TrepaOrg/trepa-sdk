@@ -48,7 +48,7 @@
 		"node": ">=20"
 	},
 	"scripts": {
-		"gen": "openapi-typescript ./openapi.json -o ./src/api/schema.ts",
+		"gen": "node scripts/gen.mjs",
 		"build": "tsup",
 		"typecheck": "tsc --noEmit",
 		"prepublishOnly": "pnpm gen && pnpm build"

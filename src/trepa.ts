@@ -3,12 +3,10 @@ import type { paths, components } from './api/schema'
 import { Session, type SessionConfig } from './session'
 import {
 	AuthResource,
-	LeaderboardResource,
 	PoolsResource,
 	PredictionsResource,
 	RewardsResource,
 	StreaksResource,
-	TemplatesResource,
 	UsersResource,
 	WithdrawalsResource,
 } from './resources'
@@ -46,8 +44,6 @@ export class Trepa {
 	readonly predictions: PredictionsResource
 	readonly rewards: RewardsResource
 	readonly withdrawals: WithdrawalsResource
-	readonly leaderboard: LeaderboardResource
-	readonly templates: TemplatesResource
 
 	constructor(config: TrepaConfig = {}) {
 		this.session = new Session(config)
@@ -58,8 +54,6 @@ export class Trepa {
 		this.predictions = new PredictionsResource(this.session)
 		this.rewards = new RewardsResource(this.session)
 		this.withdrawals = new WithdrawalsResource(this.session)
-		this.leaderboard = new LeaderboardResource(this.session)
-		this.templates = new TemplatesResource(this.session)
 	}
 
 	/** The user behind the current session. Shortcut for `trepa.auth.me()`. */
