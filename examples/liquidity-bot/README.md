@@ -4,11 +4,11 @@ A bot swarm that quotes a volatility-sized ladder around BTC spot. See [`bot.str
 
 ## Run
 
-Replace the placeholder `apiKey` and `privateKey` for each bot in [`bots.credentials.json`](./bots.credentials.json) with real values; one entry per bot, the swarm size matches the array length.
+Replace the placeholder `apiKey` and `privateKey` in [`bot.credentials.json`](./bot.credentials.json) with real values.
 
 ```bash
 npm install
 npm start
 ```
 
-`Ctrl-C` stops every bot in the swarm cleanly.
+`Ctrl-C` stops the loop cleanly.

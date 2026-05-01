@@ -74,6 +74,7 @@ Each bot polls the streak for its open pool, calls `predict` once per **new** po
 
 ## Examples
 
+- [`examples/midpoint-bot`](./examples/midpoint-bot): the smallest possible bot — one credential from env vars, no external data sources, predicts the midpoint of every open Bitcoin pool at min stake. Start here.
 - [`examples/liquidity-bot`](./examples/liquidity-bot): a coordinated bot swarm for the Bitcoin streak that quotes a volatility-sized price ladder around live BTC spot. Computes σ from 7 days of 1-minute Pyth log returns (mirroring the protocol's own calculation), waits until `prediction_end_date − 8 s` for the freshest spot, then positions each bot's slice of `±σ` around it.
 
 ## License
