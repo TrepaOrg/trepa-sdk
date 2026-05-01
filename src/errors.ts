@@ -1,4 +1,4 @@
-export interface TrepaErrorOptions {
+interface TrepaErrorOptions {
 	status: number;
 	code?: string;
 	body?: unknown;

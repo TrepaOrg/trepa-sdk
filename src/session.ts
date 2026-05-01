@@ -3,7 +3,7 @@ import createClient, { type Client, type Middleware } from 'openapi-fetch';
 import type { paths } from './api/schema';
 import { TrepaError, errorFromResponse } from './errors';
 
-export const DEFAULT_BASE_URL = 'https://www.api.trepa.app';
+const DEFAULT_BASE_URL = 'https://www.api.trepa.app';
 
 const AUTH_COOKIE = 'trepa-token';
 const REFRESH_COOKIE = 'trepa-refresh';

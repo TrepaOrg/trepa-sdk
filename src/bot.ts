@@ -5,7 +5,6 @@ import type {
 	PredictionsResource,
 	StreaksResource,
 } from './resources';
-import type { Session } from './session';
 
 export type OpenPool = components['schemas']['PoolWithRelationsDto'];
 type UserDto = components['schemas']['UserDto'];
@@ -103,14 +102,11 @@ export class Bot {
 	private readonly streaks: StreaksResource;
 	private readonly predictions: PredictionsResource;
 
-	constructor(
-		_session: Session,
-		resources: {
-			auth: AuthResource;
-			streaks: StreaksResource;
-			predictions: PredictionsResource;
-		},
-	) {
+	constructor(resources: {
+		auth: AuthResource;
+		streaks: StreaksResource;
+		predictions: PredictionsResource;
+	}) {
 		this.auth = resources.auth;
 		this.streaks = resources.streaks;
 		this.predictions = resources.predictions;

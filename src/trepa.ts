@@ -57,7 +57,7 @@ export class Trepa {
 		this.predictions = new PredictionsResource(this.session);
 		this.rewards = new RewardsResource(this.session);
 		this.withdrawals = new WithdrawalsResource(this.session);
-		this.bot = new Bot(this.session, {
+		this.bot = new Bot({
 			auth: this.auth,
 			streaks: this.streaks,
 			predictions: this.predictions,
