@@ -23,10 +23,12 @@ const me = await trepa.me()
 
 // 2. Find the open Bitcoin Flash pool.
 const streak = await trepa.streaks.bitcoin()
+
 const { current_pool: pool } = await trepa.streaks.poolDetails(streak.id)
+
 if (!pool) throw new Error('No Bitcoin pool open right now.')
 
-// 3. Place a prediction (build → sign → submit, in one call).
+// 3. Place a prediction.
 await trepa.predictions.create({
 	poolId: pool.id,
 	stake: 1,
@@ -49,6 +51,7 @@ const [resolved] = await trepa.users.predictions(me.id, {
 	includes: ['pool', 'reward'],
 	limit: 1,
 })
+
 if (resolved?.reward && !resolved.reward.is_claimed && resolved.pool) {
 	await trepa.rewards.claim({
 		poolId: resolved.pool.id,
@@ -62,6 +65,9 @@ await trepa.withdrawals.create({
 	amount: 10,
 	mintAddress: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC
 })
+
+// 7. End the session when you're done.
+await trepa.logout()
 ```
 
 For the full set of endpoints and walkthroughs of every flow, see the [docs](https://docs.trepa.app/developers/introduction).
