@@ -13,17 +13,17 @@ npm install @trepa/sdk
 The SDK wraps every REST endpoint in the [API reference](https://docs.trepa.io/developers/api-endpoints) with full TypeScript types and built-in Solana transaction signing. On top of that, it exposes a declarative interface for writing bots: you provide a `predict(pool)` function, the SDK handles the rest:
 
 ```ts
-import { Trepa } from '@trepa/sdk'
+import { Trepa } from '@trepa/sdk';
 
 const trepa = new Trepa({
-	apiKey: process.env.TREPA_API_KEY!,
-	privateKey: process.env.TREPA_PRIVATE_KEY!,
-})
+  apiKey: process.env.TREPA_API_KEY!,
+  privateKey: process.env.TREPA_PRIVATE_KEY!,
+});
 
 await trepa.bot.run({
-	stake: 1,
-	predict: (pool) => (pool.min_outcome + pool.max_outcome) / 2,
-})
+  stake: 1,
+  predict: (pool) => (pool.min_outcome + pool.max_outcome) / 2,
+});
 ```
 
 That's a complete bot. It places a prediction on every open pool using your function and keeps going until you stop it.

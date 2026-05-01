@@ -1,20 +1,21 @@
 {
-	"name": "@trepa/example-liquidity-bot",
-	"version": "0.0.0",
-	"private": true,
-	"description": "Liquidity-bootstrapping bot for the Bitcoin Flash streak.",
-	"type": "module",
-	"scripts": {
-		"start": "node --env-file=.env bot.strategy.ts"
-	},
-	"engines": {
-		"node": ">=22"
-	},
-	"dependencies": {
-		"@trepa/sdk": "latest"
-	},
-	"devDependencies": {
-		"@types/node": "^22.0.0",
-		"typescript": "^5.6.0"
-	}
+  "name": "@trepa/example-liquidity-bot",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Liquidity-bootstrapping bot for the Bitcoin Flash streak.",
+  "type": "module",
+  "scripts": {
+    "start": "node --env-file=.env bot.strategy.ts"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "dependencies": {
+    "@trepa/sdk": "latest",
+    "@binance/spot": "^29.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
 }

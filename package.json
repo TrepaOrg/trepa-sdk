@@ -51,6 +51,8 @@
     "gen": "node scripts/gen.mjs",
     "build": "tsup",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint . --report-unused-disable-directives --max-warnings 0 --fix",
+    "format": "eslint . --fix --ignore-pattern pnpm-lock.yaml --ignore-pattern '*.json' && prettier --write .",
     "prepublishOnly": "pnpm build"
   },
   "dependencies": {
@@ -59,7 +61,14 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.58.2",
+    "@typescript-eslint/parser": "^8.58.2",
+    "eslint": "^9.39.4",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-prettier": "^5.5.5",
     "openapi-typescript": "^7.13.0",
+    "prettier": "^3.8.3",
     "tsup": "^8.5.1",
     "typescript": "^5.6.0"
   },

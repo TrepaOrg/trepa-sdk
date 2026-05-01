@@ -6,7 +6,7 @@ import {
 	getTransactionDecoder,
 	getTransactionEncoder,
 	partiallySignTransaction,
-} from '@solana/kit'
+} from '@solana/kit';
 
 /**
  * Signs a base64-encoded wire-format Solana transaction returned by any
@@ -21,19 +21,18 @@ export const signTransaction = async (
 	base64Transaction: string,
 	privateKeyBase58: string,
 ): Promise<string> => {
-	const transactionBytes =
-		getBase64Encoder().encode(base64Transaction)
-	const transaction = getTransactionDecoder().decode(transactionBytes)
+	const transactionBytes = getBase64Encoder().encode(base64Transaction);
+	const transaction = getTransactionDecoder().decode(transactionBytes);
 
-	const secretKeyBytes = getBase58Encoder().encode(privateKeyBase58)
-	const keyPair = await createKeyPairFromBytes(secretKeyBytes)
+	const secretKeyBytes = getBase58Encoder().encode(privateKeyBase58);
+	const keyPair = await createKeyPairFromBytes(secretKeyBytes);
 
 	const signedTransaction = await partiallySignTransaction(
 		[keyPair],
 		transaction,
-	)
+	);
 
 	return getBase64Decoder().decode(
 		getTransactionEncoder().encode(signedTransaction),
-	)
-}
+	);
+};

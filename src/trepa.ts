@@ -1,6 +1,7 @@
-import type { Client } from 'openapi-fetch'
-import type { paths, components } from './api/schema'
-import { Session, type SessionConfig } from './session'
+import type { Client } from 'openapi-fetch';
+
+import type { paths, components } from './api/schema';
+import { Bot } from './bot';
 import {
 	AuthResource,
 	PoolsResource,
@@ -9,10 +10,10 @@ import {
 	StreaksResource,
 	UsersResource,
 	WithdrawalsResource,
-} from './resources'
-import { Bot } from './bot'
+} from './resources';
+import { Session, type SessionConfig } from './session';
 
-export type TrepaConfig = SessionConfig
+export type TrepaConfig = SessionConfig;
 
 /**
  * The single entry point for the Trepa SDK.
@@ -36,41 +37,41 @@ export type TrepaConfig = SessionConfig
  * ```
  */
 export class Trepa {
-	private readonly session: Session
+	private readonly session: Session;
 
-	readonly auth: AuthResource
-	readonly users: UsersResource
-	readonly pools: PoolsResource
-	readonly streaks: StreaksResource
-	readonly predictions: PredictionsResource
-	readonly rewards: RewardsResource
-	readonly withdrawals: WithdrawalsResource
-	readonly bot: Bot
+	readonly auth: AuthResource;
+	readonly users: UsersResource;
+	readonly pools: PoolsResource;
+	readonly streaks: StreaksResource;
+	readonly predictions: PredictionsResource;
+	readonly rewards: RewardsResource;
+	readonly withdrawals: WithdrawalsResource;
+	readonly bot: Bot;
 
 	constructor(config: TrepaConfig = {}) {
-		this.session = new Session(config)
-		this.auth = new AuthResource(this.session)
-		this.users = new UsersResource(this.session)
-		this.pools = new PoolsResource(this.session)
-		this.streaks = new StreaksResource(this.session)
-		this.predictions = new PredictionsResource(this.session)
-		this.rewards = new RewardsResource(this.session)
-		this.withdrawals = new WithdrawalsResource(this.session)
+		this.session = new Session(config);
+		this.auth = new AuthResource(this.session);
+		this.users = new UsersResource(this.session);
+		this.pools = new PoolsResource(this.session);
+		this.streaks = new StreaksResource(this.session);
+		this.predictions = new PredictionsResource(this.session);
+		this.rewards = new RewardsResource(this.session);
+		this.withdrawals = new WithdrawalsResource(this.session);
 		this.bot = new Bot(this.session, {
 			auth: this.auth,
 			streaks: this.streaks,
 			predictions: this.predictions,
-		})
+		});
 	}
 
 	/** The user behind the current session. Shortcut for `trepa.auth.me()`. */
 	me(): Promise<components['schemas']['UserDto']> {
-		return this.auth.me()
+		return this.auth.me();
 	}
 
 	/** End the current session and clear cookies. */
 	logout(): Promise<void> {
-		return this.auth.logout()
+		return this.auth.logout();
 	}
 
 	/**
@@ -78,12 +79,12 @@ export class Trepa {
 	 * you normally don't need to call this.
 	 */
 	refresh(): Promise<void> {
-		return this.auth.refresh()
+		return this.auth.refresh();
 	}
 
 	/** API origin in use. */
 	get baseUrl(): string {
-		return this.session.baseUrl
+		return this.session.baseUrl;
 	}
 
 	/**
@@ -92,6 +93,6 @@ export class Trepa {
 	 * `openapi.json` is callable here with full type-safety.
 	 */
 	get raw(): Client<paths> {
-		return this.session.client
+		return this.session.client;
 	}
 }

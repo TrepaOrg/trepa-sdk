@@ -1,4 +1,4 @@
-import { defineConfig } from 'tsup'
+import { defineConfig } from 'tsup';
 
 export default defineConfig({
 	entry: {
@@ -14,4 +14,4 @@ export default defineConfig({
 	splitting: false,
 	minify: false,
 	noExternal: ['@solana/kit'],
-})
+});
