@@ -26,11 +26,11 @@ await trepa.bot.run({
 });
 ```
 
-That's a complete bot. It places a prediction on every open pool using your function and keeps going until you stop it.
+In simple terms, bots place a prediction on every open pool using your function and keeps going until you stop it.
 
 ## Examples
 
-- [`examples/liquidity-bot`](./examples/liquidity-bot): a liquidity-bootstrapping bot for the Bitcoin Flash streak. Uses `trepa.bot.run` with an "anchored consensus" strategy that stays close to the stake-weighted crowd centroid.
+- [`examples/liquidity-bot`](./examples/liquidity-bot): a minimal liquidity-bootstrapping bot for the Bitcoin Flash streak. Reads the live BTCUSDT spot price from Binance via the official [`@binance/spot`](https://www.npmjs.com/package/@binance/spot) connector, adds a small random jitter so concurrent bots don't all land on the same tick, and submits a min-stake prediction on every open pool.
 
 For the full set of endpoints and walkthroughs of every flow, see the [docs](https://docs.trepa.io/developers/introduction).
 
