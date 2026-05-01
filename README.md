@@ -60,13 +60,13 @@ await trepa.bots.run(({ index, count }) => ({
 
 ### Anatomy
 
-| Piece | What it is |
-| --- | --- |
-| `credentials` | One entry per bot you want to run in parallel. `credentials[0]` doubles as the primary identity for non-bot resource calls (e.g. `trepa.predictions.create`). |
-| `bots.run(factory)` | Spawns one loop per credential and runs them concurrently. Pass a `(slot) => BotOptions` factory when bots need to know their position in the swarm, or a plain `BotOptions` object when every bot does the same thing. Resolves when every loop stops. |
-| `slot` | `{ index, count }` — this bot's seat in the swarm. Use it to spread predictions across an outcome range, lay a price ladder, etc. |
-| `predict(pool)` | The only required field. Called once per open pool. Return `{ value, stake }` to submit, or `null` to skip. `value` is auto-snapped to `pool.step` and clamped to `[min_outcome, max_outcome]`; `stake` is clamped to `[min_stake, max_stake]`. Throws are caught — the loop survives and `onError` fires. |
-| `onStart` / `onPredicted` / `onPoolSkipped` / `onError` | Optional lifecycle hooks. Return a string to print it on the matching color-coded line (`[READY]`, `[PRED]`, `[SKIP]`, `[ERROR]`), or return nothing to stay silent. The SDK auto-prefixes each line with `[i/N]` when `count > 1`. |
+| Piece                                                   | What it is                                                                                                                                                                                                                                                                                                 |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `credentials`                                           | One entry per bot you want to run in parallel. `credentials[0]` doubles as the primary identity for non-bot resource calls (e.g. `trepa.predictions.create`).                                                                                                                                              |
+| `bots.run(factory)`                                     | Spawns one loop per credential and runs them concurrently. Pass a `(slot) => BotOptions` factory when bots need to know their position in the swarm, or a plain `BotOptions` object when every bot does the same thing. Resolves when every loop stops.                                                    |
+| `slot`                                                  | `{ index, count }` — this bot's seat in the swarm. Use it to spread predictions across an outcome range, lay a price ladder, etc.                                                                                                                                                                          |
+| `predict(pool)`                                         | The only required field. Called once per open pool. Return `{ value, stake }` to submit, or `null` to skip. `value` is auto-snapped to `pool.step` and clamped to `[min_outcome, max_outcome]`; `stake` is clamped to `[min_stake, max_stake]`. Throws are caught — the loop survives and `onError` fires. |
+| `onStart` / `onPredicted` / `onPoolSkipped` / `onError` | Optional lifecycle hooks. Return a string to print it on the matching color-coded line (`[READY]`, `[PRED]`, `[SKIP]`, `[ERROR]`), or return nothing to stay silent. The SDK auto-prefixes each line with `[i/N]` when `count > 1`.                                                                        |
 
 ### The loop
 

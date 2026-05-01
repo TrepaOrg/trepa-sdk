@@ -1,4 +1,9 @@
-import { type BotCredentials, Trepa } from '@trepa/sdk';
+import {
+	type BotCredentials,
+	formatError,
+	formatNumber,
+	Trepa,
+} from '@trepa/sdk';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -13,7 +18,16 @@ await trepa.bots.run({
 		value: (pool.min_outcome + pool.max_outcome) / 2,
 		stake: pool.min_stake,
 	}),
-	onStart: ({ me }) => `online as @${me.username}`,
-	onPredicted: ({ pool, value }) => `${pool.title} → ${value}`,
-	onError: (err) => (err instanceof Error ? err.message : String(err)),
+	onStart: ({ me }) => {
+		return `online as ${me.username}`;
+	},
+	onPredicted: ({ pool, value, stake }) => {
+		return `${pool.title} → ${formatNumber(value, pool.precision)} @ ${formatNumber(stake, 2)} USDC`;
+	},
+	onPoolSkipped: ({ pool, reason }) => {
+		return `${pool?.title ?? '(no pool open)'} — ${reason}`;
+	},
+	onError: (err) => {
+		return formatError(err);
+	},
 });
