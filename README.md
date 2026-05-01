@@ -13,7 +13,7 @@
   <a href="https://bundlephobia.com/package/@trepa/sdk"><img src="https://img.shields.io/bundlephobia/minzip/@trepa/sdk?style=flat-square&label=bundle&logo=webpack&logoColor=white&color=4c1" alt="bundle size (minified + gzipped)" /></a>
   <a href="https://nodejs.org/"><img src="https://img.shields.io/badge/node-%3E%3D20-339933?style=flat-square&logo=nodedotjs&logoColor=white" alt="Node.js" /></a>
   <a href="https://pnpm.io/"><img src="https://img.shields.io/badge/pnpm-%3E%3D10.33.1-f69220?style=flat-square&logo=pnpm&logoColor=white" alt="pnpm" /></a>
-  <img src="https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/TypeScript-6-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" />
   <img src="https://img.shields.io/badge/Solana-signed%20transactions-9945FF?style=flat-square&logo=solana&logoColor=white" alt="Solana signed transactions" />
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT License" /></a>
 </p>
