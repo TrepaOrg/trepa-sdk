@@ -162,6 +162,11 @@ export interface BotOptions {
 	 * handlers (when running in Node) so `Ctrl-C` and container shutdowns
 	 * cleanly stop every bot in the swarm. Pass your own signal when you
 	 * need to control shutdown yourself or coordinate with other lifecycles.
+	 *
+	 * On shutdown — whether via this signal, `SIGINT`/`SIGTERM`, or an
+	 * unhandled error — each bot's session is invalidated server-side via
+	 * `auth.logout()` before `bots.run` resolves. Logout failures are
+	 * routed through `onError` and never block the swarm from exiting.
 	 */
 	signal?: AbortSignal;
 	/**
@@ -263,7 +268,7 @@ export class Bots {
 
 		try {
 			await Promise.all(
-				this.credentials.map((creds, index) => {
+				this.credentials.map(async (creds, index) => {
 					const slot: BotSlot = { index, count };
 					const session = new Session({ ...this.sessionDefaults, ...creds });
 					const resources: BotResources = {
@@ -275,7 +280,15 @@ export class Bots {
 					const signal = opts.signal
 						? AbortSignal.any([swarmAc.signal, opts.signal])
 						: swarmAc.signal;
-					return runOne(resources, opts, signal);
+					try {
+						await runOne(resources, opts, signal);
+					} finally {
+						try {
+							await resources.auth.logout();
+						} catch (err) {
+							emit('error', opts.onError?.(err));
+						}
+					}
 				}),
 			);
 		} finally {
