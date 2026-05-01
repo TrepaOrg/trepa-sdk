@@ -5,7 +5,7 @@
   "description": "Liquidity-bootstrapping bot for the Bitcoin streak.",
   "type": "module",
   "scripts": {
-    "start": "node --env-file=.env bot.strategy.ts"
+    "start": "node bot.strategy.ts"
   },
   "engines": {
     "node": ">=22.12.0"

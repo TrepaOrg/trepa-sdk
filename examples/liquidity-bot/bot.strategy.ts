@@ -1,66 +1,65 @@
-import { formatError, formatNumber, Trepa } from '@trepa/sdk';
+import { formatError, formatNumber } from '@trepa/sdk';
 
-import { average, fetchBtcPrice } from './utils';
+import { fetchBtcPrice, fetchBtcStdLogReturns, runSwarm } from './utils.ts';
 
 /**
- * Liquidity-seeding strategy for the Bitcoin streak.
+ * Quote-ladder strategy for the Bitcoin streak.
  *
- * For every open pool, anchor a prediction at Binance's live BTC/USDT spot
- * price — the same reference the streak resolves against — then pull it
- * partway toward where other predictors are already clustered. We
- * re-fetch the pool with `includes: ['predictions']` to read the live
- * book, take the average of the crowd, and blend 30% of the way from spot
- * toward it. The crowd usually prices in short-term drift faster than
- * naked spot does, so following the consensus lowers expected error
- * without giving up the spot anchor entirely. A small random jitter
- * (±0.25% of the outcome range) keeps multiple bots from landing on the
- * exact same tick.
+ * N bots lay a flat ladder
+ * of predictions around BTC spot, sized to actual realized volatility:
  *
- * Stake is pinned to the pool minimum. The goal here is presence with a
- * touch of edge — be in every pool, cheaply, and lean toward the crowd.
+ *   σ      = spot · std_log_returns(7d, 1m) · √(minutes_to_resolution)
+ *   bot[i] = spot − σ + (i + ½) · 2σ/N   for i ∈ [0, N)
+ *
+ * Every bot waits until `prediction_end_date − LEAD_TIME_MS` so the
+ * spot snapshot is as close to the resolution window as we dare go
+ * without missing the cutoff, then submits at min stake.
+ *
+ * The whole ladder is presence: thin enough per tick that a real
+ * predictor can arb against any quote, wide enough as a band that the
+ * curve looks alive across the full ±σ outcome region.
  */
 
-const trepa = new Trepa({
-	baseUrl: process.env.TREPA_API_URL,
-	apiKey: process.env.TREPA_API_KEY,
-	privateKey: process.env.TREPA_PRIVATE_KEY,
-});
+const LEAD_TIME_MS = 8_000;
 
-const CROWD_PULL = 0.3;
-const JITTER_FRACTION = 0.005;
-
-await trepa.bot.run({
+await runSwarm(({ index, count }) => ({
 	predict: async (pool) => {
-		const [price, withPredictions] = await Promise.all([
+		const closeTs = new Date(pool.prediction_end_date).getTime();
+		const waitMs = closeTs - LEAD_TIME_MS - Date.now();
+
+		if (waitMs > 0) {
+			await new Promise((resolve) => setTimeout(resolve, waitMs));
+		}
+
+		const [price, stdLogReturns] = await Promise.all([
 			fetchBtcPrice(),
-			trepa.pools.get(pool.id, { includes: ['predictions'] }),
+			fetchBtcStdLogReturns(),
 		]);
 
-		const others = withPredictions.predictions ?? [];
-		const range = pool.max_outcome - pool.min_outcome;
-
-		const crowdCenter = average(
-			others.map((p) => p.prediction),
-			price,
+		const resolutionMinutes = Math.max(
+			0,
+			(new Date(pool.reference_date).getTime() - closeTs) / 60_000,
 		);
-		const target = price + (crowdCenter - price) * CROWD_PULL;
-		const jitter = (Math.random() - 0.5) * JITTER_FRACTION * range;
+		const sigma = price * stdLogReturns * Math.sqrt(resolutionMinutes);
 
-		const value = target + jitter;
-		const stake = Math.min(pool.max_stake, pool.min_stake);
+		const sliceWidth = (2 * sigma) / count;
+		const offset = -sigma + (index + 0.5) * sliceWidth;
+
+		const value = price + offset;
+		const stake = pool.min_stake;
 
 		return { value, stake };
 	},
 	onStart: ({ me }) => {
-		return `bot online as @${me.username}`;
+		return `online as @${me.username}`;
 	},
 	onPredicted: ({ pool, value, stake }) => {
 		return `${pool.title} → ${formatNumber(value, pool.precision)} @ ${formatNumber(stake, 2)} USDC`;
 	},
 	onPoolSkipped: ({ pool, reason }) => {
-		return `${pool?.title ?? ''} — ${reason}`;
+		return `${pool?.title ?? '(no pool open)'} — ${reason}`;
 	},
 	onError: (err) => {
 		return formatError(err);
 	},
-});
+}));
