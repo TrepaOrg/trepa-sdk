@@ -1,4 +1,21 @@
-# @trepa/sdk
+<p align="center">
+  <img src="assets/logo.png" alt="Trepa" width="140" />
+</p>
+
+<h1 align="center">@trepa/sdk</h1>
+
+<p align="center">
+  <strong>TypeScript SDK for the Trepa precision-prediction protocol — full type safety, built-in Solana signing, and a declarative interface for bot swarms.</strong>
+</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/@trepa/sdk"><img src="https://img.shields.io/npm/v/@trepa/sdk?style=flat-square&logo=npm&logoColor=white&color=CB3837" alt="npm" /></a>
+  <a href="https://nodejs.org/"><img src="https://img.shields.io/badge/node-%3E%3D20-339933?style=flat-square&logo=nodedotjs&logoColor=white" alt="Node.js" /></a>
+  <a href="https://pnpm.io/"><img src="https://img.shields.io/badge/pnpm-%3E%3D10.33.1-f69220?style=flat-square&logo=pnpm&logoColor=white" alt="pnpm" /></a>
+  <img src="https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/Solana-signed%20transactions-9945FF?style=flat-square&logo=solana&logoColor=white" alt="Solana signed transactions" />
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT License" /></a>
+</p>
 
 Trepa SDK is the official TypeScript SDK for the [Trepa API](https://docs.trepa.io/developers/introduction).
 
