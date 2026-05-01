@@ -1,6 +1,13 @@
-import { formatError, formatNumber } from '@trepa/sdk';
+import {
+	type BotCredentials,
+	formatError,
+	formatNumber,
+	Trepa,
+} from '@trepa/sdk';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
-import { fetchBtcPrice, fetchBtcStdLogReturns, runSwarm } from './utils.ts';
+import { fetchBtcPrice, fetchBtcStdLogReturns } from './utils.ts';
 
 /**
  * Quote-ladder strategy for the Bitcoin streak.
@@ -21,8 +28,15 @@ import { fetchBtcPrice, fetchBtcStdLogReturns, runSwarm } from './utils.ts';
  */
 
 const LEAD_TIME_MS = 8_000;
+const CREDENTIALS_PATH = process.argv[2] ?? 'bots.credentials.json';
 
-await runSwarm(({ index, count }) => ({
+const credentials = JSON.parse(
+	readFileSync(resolve(process.cwd(), CREDENTIALS_PATH), 'utf8'),
+) as BotCredentials[];
+
+const trepa = new Trepa({ credentials });
+
+await trepa.bots.run(({ index, count }) => ({
 	predict: async (pool) => {
 		const closeTs = new Date(pool.prediction_end_date).getTime();
 		const waitMs = closeTs - LEAD_TIME_MS - Date.now();

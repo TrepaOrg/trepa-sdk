@@ -1,7 +1,7 @@
 import type { Client } from 'openapi-fetch';
 
 import type { paths, components } from './api/schema';
-import { Bot } from './bot';
+import { Bots, type BotCredentials } from './bot';
 import {
 	AuthResource,
 	PoolsResource,
@@ -11,30 +11,41 @@ import {
 	UsersResource,
 	WithdrawalsResource,
 } from './resources';
-import { Session, type SessionConfig } from './session';
+import { Session } from './session';
 
-export type TrepaConfig = SessionConfig;
+export interface TrepaConfig {
+	/**
+	 * One credential per bot in the swarm. The first entry doubles as the
+	 * primary identity for any non-bot resource call (`trepa.predictions.create`,
+	 * `trepa.rewards.claim`, etc.). Omit for read-only access to public
+	 * endpoints.
+	 */
+	credentials?: readonly BotCredentials[];
+	/** Override the API origin (defaults to production). */
+	baseUrl?: string;
+	/** Override the underlying fetch implementation (e.g. node-fetch, undici). */
+	fetch?: typeof fetch;
+}
 
 /**
  * The single entry point for the Trepa SDK.
  *
  * ```ts
  * const trepa = new Trepa({
- *   apiKey: process.env.TREPA_API_KEY!,
- *   privateKey: process.env.TREPA_PRIVATE_KEY!,
+ *   credentials: [
+ *     { apiKey: '...', privateKey: '...' },
+ *     { apiKey: '...', privateKey: '...' },
+ *   ],
  * })
  *
- * const me = await trepa.me()
- * const streak = await trepa.streaks.bitcoin()
- * const { current_pool } = await trepa.streaks.poolDetails(streak.id)
- * if (!current_pool) throw new Error('No Bitcoin pool open right now.')
- *
- * const { signature } = await trepa.predictions.create({
- *   poolId: current_pool.id,
- *   stake: 1,
- *   value: 50_000,
- * })
+ * await trepa.bots.run(({ index, count }) => ({
+ *   predict: (pool) => ({ value: ..., stake: pool.min_stake }),
+ * }))
  * ```
+ *
+ * For a single-identity setup (or direct API calls), pass an array with
+ * one credential. The first credential is used as the primary identity for
+ * any non-bot resource call.
  */
 export class Trepa {
 	private readonly session: Session;
@@ -46,10 +57,18 @@ export class Trepa {
 	readonly predictions: PredictionsResource;
 	readonly rewards: RewardsResource;
 	readonly withdrawals: WithdrawalsResource;
-	readonly bot: Bot;
+	readonly bots: Bots;
 
 	constructor(config: TrepaConfig = {}) {
-		this.session = new Session(config);
+		const credentials = config.credentials ?? [];
+		const primary = credentials[0];
+
+		this.session = new Session({
+			apiKey: primary?.apiKey,
+			privateKey: primary?.privateKey,
+			baseUrl: config.baseUrl,
+			fetch: config.fetch,
+		});
 		this.auth = new AuthResource(this.session);
 		this.users = new UsersResource(this.session);
 		this.pools = new PoolsResource(this.session);
@@ -57,10 +76,9 @@ export class Trepa {
 		this.predictions = new PredictionsResource(this.session);
 		this.rewards = new RewardsResource(this.session);
 		this.withdrawals = new WithdrawalsResource(this.session);
-		this.bot = new Bot({
-			auth: this.auth,
-			streaks: this.streaks,
-			predictions: this.predictions,
+		this.bots = new Bots(credentials, {
+			baseUrl: config.baseUrl,
+			fetch: config.fetch,
 		});
 	}
 

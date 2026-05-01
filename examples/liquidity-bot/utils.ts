@@ -1,7 +1,3 @@
-import { type BotOptions, formatError, Trepa } from '@trepa/sdk';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-
 export const fetchBtcPrice = async (): Promise<number> => {
 	const res = await fetch(
 		'https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT',
@@ -19,7 +15,9 @@ const ONE_DAY_SEC = 24 * 3600;
 const SEVEN_DAYS_SEC = 7 * ONE_DAY_SEC;
 const MIN_COVERAGE_RATIO = 0.95;
 const MAX_BOUNDARY_DRIFT_SEC = 120;
-const MIN_SAMPLE_COUNT = Math.floor((SEVEN_DAYS_SEC / 60) * MIN_COVERAGE_RATIO);
+const MIN_SAMPLE_COUNT = Math.floor(
+	(SEVEN_DAYS_SEC / 60) * MIN_COVERAGE_RATIO,
+);
 
 const STDDEV_CACHE_TTL_MS = 30 * 60 * 1000;
 let cachedStddev: { value: number; computedAt: number } | null = null;
@@ -163,74 +161,4 @@ const fetchPythOhlc = async (
 		throw new Error(`Pyth OHLC chunk returned HTTP ${res.status}`);
 	}
 	return (await res.json()) as PythOhlcResponse;
-};
-
-export interface BotSlot {
-	index: number;
-	count: number;
-}
-
-interface BotCredentials {
-	apiKey: string;
-	privateKey: string;
-}
-
-const DEFAULT_CREDENTIALS_PATH = 'bots.credentials.json';
-
-export const runSwarm = async (
-	strategy: (slot: BotSlot) => BotOptions,
-): Promise<void> => {
-	const path = DEFAULT_CREDENTIALS_PATH;
-	const credentials = loadCredentials(path);
-	const count = credentials.length;
-
-	await Promise.all(
-		credentials.map((bot, index) => {
-			const trepa = new Trepa({
-				apiKey: bot.apiKey,
-				privateKey: bot.privateKey,
-			});
-			const tag = `[${index + 1}/${count}]`;
-			const opts = strategy({ index, count });
-			return trepa.bot.run({
-				...opts,
-				onStart: opts.onStart && tagged(tag, opts.onStart),
-				onPredicted: opts.onPredicted && tagged(tag, opts.onPredicted),
-				onPoolSkipped: opts.onPoolSkipped && tagged(tag, opts.onPoolSkipped),
-				onError: opts.onError && tagged(tag, opts.onError),
-			});
-		}),
-	);
-};
-
-const tagged =
-	<Arg>(tag: string, fn: (arg: Arg) => string | void) =>
-	(arg: Arg): string | void => {
-		const result = fn(arg);
-		return typeof result === 'string' ? `${tag} ${result}` : result;
-	};
-
-const loadCredentials = (path: string): BotCredentials[] => {
-	const absolutePath = resolve(process.cwd(), path);
-
-	let raw: string;
-	try {
-		raw = readFileSync(absolutePath, 'utf8');
-	} catch (err) {
-		throw new Error(
-			`Couldn't read bot credentials at ${absolutePath}. ${formatError(err)}`,
-		);
-	}
-
-	const parsed = JSON.parse(raw) as BotCredentials[];
-	if (!Array.isArray(parsed) || parsed.length === 0) {
-		throw new Error(`${absolutePath}: must be a non-empty array of bots`);
-	}
-	parsed.forEach((bot, i) => {
-		if (!bot.apiKey) throw new Error(`${absolutePath}: [${i}].apiKey missing`);
-		if (!bot.privateKey)
-			throw new Error(`${absolutePath}: [${i}].privateKey missing`);
-	});
-
-	return parsed;
 };

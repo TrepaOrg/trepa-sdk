@@ -1,15 +1,27 @@
 import type { components } from './api/schema';
+import { TrepaError } from './errors';
 import { type EventKind, writeEvent } from './format';
-import type {
+import {
 	AuthResource,
 	PredictionsResource,
 	StreaksResource,
 } from './resources';
+import { Session, type SessionConfig } from './session';
 
 export type OpenPool = components['schemas']['PoolWithRelationsDto'];
 type UserDto = components['schemas']['UserDto'];
 
 export type BotPredictDecision = { value: number; stake: number } | null;
+
+export interface BotCredentials {
+	apiKey: string;
+	privateKey: string;
+}
+
+export interface BotSlot {
+	index: number;
+	count: number;
+}
 
 export interface BotContext {
 	me: UserDto;
@@ -51,12 +63,12 @@ export interface BotOptions {
 	/** Extra wait after a pool's `prediction_end_date` before polling again. Default 5s. */
 	postResolveBufferMs?: number;
 	/**
-	 * Cancel the loop. The bot resolves once the signal aborts.
+	 * Cancel the loop. The whole swarm resolves once the signal aborts.
 	 *
-	 * If omitted, the bot installs its own `SIGINT` and `SIGTERM` handlers
-	 * (when running in Node) so `Ctrl-C` and container shutdowns cleanly stop
-	 * the loop. Pass your own signal when you need to control shutdown
-	 * yourself or coordinate with other lifecycles.
+	 * If omitted, `bots.run` installs its own `SIGINT` and `SIGTERM`
+	 * handlers (when running in Node) so `Ctrl-C` and container shutdowns
+	 * cleanly stop every bot in the swarm. Pass your own signal when you
+	 * need to control shutdown yourself or coordinate with other lifecycles.
 	 */
 	signal?: AbortSignal;
 	/**
@@ -64,6 +76,9 @@ export interface BotOptions {
 	 * print it on the matching color-coded line — e.g. `[READY]: ...`,
 	 * `[PRED]: ...`, `[SKIP]: ...`, `[ERROR]: ...`. Return nothing (or run
 	 * your own `console.log` inside) to stay silent or hand-roll output.
+	 *
+	 * When the swarm has more than one bot, the SDK automatically prefixes
+	 * each returned string with `[i/N]` so you can tell the bots apart.
 	 */
 	onStart?: (ctx: BotContext) => string | void;
 	onPredicted?: (info: BotPredictionInfo) => string | void;
@@ -73,162 +88,225 @@ export interface BotOptions {
 
 const DEFAULT_POLL_INTERVAL_MS = 15_000;
 const DEFAULT_POST_RESOLVE_BUFFER_MS = 5_000;
+const SHUTDOWN_SIGNALS = ['SIGINT', 'SIGTERM'] as const;
+
+interface BotResources {
+	auth: AuthResource;
+	streaks: StreaksResource;
+	predictions: PredictionsResource;
+}
 
 /**
- * A long-running predictor loop. Subscribes to a streak and calls your
- * `predict` callback once per pool. You decide the value, the bot handles
- * polling, dedup, snapping, waiting, and graceful shutdown.
+ * One or more long-running predictor loops, one per credential passed to
+ * `new Trepa({ credentials: [...] })`. Pass a strategy factory that
+ * returns `BotOptions` per slot for swarm-aware coordination, or a plain
+ * `BotOptions` object when every bot does the same thing.
  *
  * ```ts
- * import { Trepa, formatNumber } from '@trepa/sdk'
+ * const trepa = new Trepa({
+ *   credentials: [
+ *     { apiKey: '...', privateKey: '...' },
+ *     { apiKey: '...', privateKey: '...' },
+ *   ],
+ * })
  *
- * await trepa.bot.run({
+ * await trepa.bots.run(({ index, count }) => ({
  *   predict: (pool) => ({
- *     value: (pool.min_outcome + pool.max_outcome) / 2,
+ *     value:
+ *       pool.min_outcome +
+ *       ((index + 0.5) / count) * (pool.max_outcome - pool.min_outcome),
  *     stake: pool.min_stake,
  *   }),
- *   onPredicted: ({ pool, value }) =>
- *     `${pool.title} → ${formatNumber(value, pool.precision)}`,
- * })
+ * }))
  * ```
  */
-export class Bot {
-	private readonly auth: AuthResource;
-	private readonly streaks: StreaksResource;
-	private readonly predictions: PredictionsResource;
+export class Bots {
+	private readonly credentials: readonly BotCredentials[];
+	private readonly sessionDefaults: Omit<
+		SessionConfig,
+		'apiKey' | 'privateKey'
+	>;
 
-	constructor(resources: {
-		auth: AuthResource;
-		streaks: StreaksResource;
-		predictions: PredictionsResource;
-	}) {
-		this.auth = resources.auth;
-		this.streaks = resources.streaks;
-		this.predictions = resources.predictions;
+	constructor(
+		credentials: readonly BotCredentials[],
+		sessionDefaults: Omit<SessionConfig, 'apiKey' | 'privateKey'> = {},
+	) {
+		this.credentials = credentials;
+		this.sessionDefaults = sessionDefaults;
 	}
 
-	async run(options: BotOptions): Promise<void> {
-		const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
-		const postResolveBufferMs =
-			options.postResolveBufferMs ?? DEFAULT_POST_RESOLVE_BUFFER_MS;
-		const { signal, dispose } = resolveSignal(options.signal);
-
-		try {
-			const me = await this.auth.me();
-			const streakId = (await this.streaks.bitcoin()).id;
-			emit('ready', options.onStart?.({ me, streakId }));
-
-			const seen = new Set<string>();
-
-			while (!signal.aborted) {
-				try {
-					const { current_pool: pool } =
-						await this.streaks.poolDetails(streakId);
-
-					if (!pool || pool.is_closed) {
-						emit(
-							'skip',
-							options.onPoolSkipped?.({
-								pool: pool ?? null,
-								reason: 'no-open-pool',
-							}),
-						);
-						await sleep(pollIntervalMs, signal);
-						continue;
-					}
-
-					if (!seen.has(pool.id)) {
-						seen.add(pool.id);
-						await this.tryPredict(pool, options);
-					}
-
-					await sleepUntil(
-						pool.prediction_end_date,
-						postResolveBufferMs,
-						pollIntervalMs,
-						signal,
-					);
-				} catch (err) {
-					emit('error', options.onError?.(err));
-					await sleep(pollIntervalMs, signal);
-				}
-			}
-		} finally {
-			dispose();
-		}
+	/** Number of bots in the swarm. */
+	get count(): number {
+		return this.credentials.length;
 	}
 
-	private async tryPredict(pool: OpenPool, options: BotOptions): Promise<void> {
-		let decision: BotPredictDecision;
-
-		try {
-			decision = await options.predict(pool);
-		} catch (err) {
-			emit('error', options.onError?.(err));
-			emit('skip', options.onPoolSkipped?.({ pool, reason: 'predict-threw' }));
-			return;
-		}
-
-		if (decision === null) {
-			emit(
-				'skip',
-				options.onPoolSkipped?.({ pool, reason: 'predict-returned-null' }),
+	/**
+	 * Start every bot in the swarm and resolve when they all stop. Pass a
+	 * factory `(slot) => BotOptions` for slot-aware strategies, or a plain
+	 * `BotOptions` object to share a single strategy across every bot.
+	 */
+	async run(
+		strategy: BotOptions | ((slot: BotSlot) => BotOptions),
+	): Promise<void> {
+		const count = this.credentials.length;
+		if (count === 0) {
+			throw new TrepaError(
+				'bots.run() requires at least one set of credentials. ' +
+					'Pass `credentials: [{ apiKey, privateKey }, ...]` to `new Trepa(...)`.',
+				{ status: 0, code: 'missing_credentials' },
 			);
-			return;
 		}
 
-		if (!Number.isFinite(decision.value)) {
-			emit('skip', options.onPoolSkipped?.({ pool, reason: 'invalid-value' }));
-			return;
-		}
+		const factory: (slot: BotSlot) => BotOptions =
+			typeof strategy === 'function' ? strategy : () => strategy;
 
-		if (!Number.isFinite(decision.stake)) {
-			emit('skip', options.onPoolSkipped?.({ pool, reason: 'invalid-stake' }));
-			return;
-		}
-
-		const value = snap(decision.value, pool);
-		const stake = clamp(decision.stake, pool.min_stake, pool.max_stake);
+		const swarmAc = new AbortController();
+		const proc =
+			typeof process !== 'undefined' && typeof process.on === 'function'
+				? process
+				: null;
+		const handler = (): void => swarmAc.abort();
+		for (const sig of SHUTDOWN_SIGNALS) proc?.on(sig, handler);
 
 		try {
-			await this.predictions.create({ poolId: pool.id, stake, value });
-			emit('pred', options.onPredicted?.({ pool, value, stake }));
-		} catch (err) {
-			emit('error', options.onError?.(err));
+			await Promise.all(
+				this.credentials.map((creds, index) => {
+					const slot: BotSlot = { index, count };
+					const session = new Session({ ...this.sessionDefaults, ...creds });
+					const resources: BotResources = {
+						auth: new AuthResource(session),
+						streaks: new StreaksResource(session),
+						predictions: new PredictionsResource(session),
+					};
+					const opts = withTag(slot, factory(slot));
+					const signal = opts.signal
+						? AbortSignal.any([swarmAc.signal, opts.signal])
+						: swarmAc.signal;
+					return runOne(resources, opts, signal);
+				}),
+			);
+		} finally {
+			for (const sig of SHUTDOWN_SIGNALS) proc?.off(sig, handler);
 		}
 	}
 }
+
+const withTag = (slot: BotSlot, opts: BotOptions): BotOptions => {
+	if (slot.count <= 1) return opts;
+	const tag = `[${slot.index + 1}/${slot.count}]`;
+	const wrap = <Arg>(
+		fn: ((arg: Arg) => string | void) | undefined,
+	): ((arg: Arg) => string | void) | undefined =>
+		fn &&
+		((arg) => {
+			const result = fn(arg);
+			return typeof result === 'string' ? `${tag} ${result}` : result;
+		});
+	return {
+		...opts,
+		onStart: wrap(opts.onStart),
+		onPredicted: wrap(opts.onPredicted),
+		onPoolSkipped: wrap(opts.onPoolSkipped),
+		onError: wrap(opts.onError),
+	};
+};
+
+const runOne = async (
+	resources: BotResources,
+	options: BotOptions,
+	signal: AbortSignal,
+): Promise<void> => {
+	const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
+	const postResolveBufferMs =
+		options.postResolveBufferMs ?? DEFAULT_POST_RESOLVE_BUFFER_MS;
+
+	const me = await resources.auth.me();
+	const streakId = (await resources.streaks.bitcoin()).id;
+	emit('ready', options.onStart?.({ me, streakId }));
+
+	const seen = new Set<string>();
+
+	while (!signal.aborted) {
+		try {
+			const { current_pool: pool } =
+				await resources.streaks.poolDetails(streakId);
+
+			if (!pool || pool.is_closed) {
+				emit(
+					'skip',
+					options.onPoolSkipped?.({
+						pool: pool ?? null,
+						reason: 'no-open-pool',
+					}),
+				);
+				await sleep(pollIntervalMs, signal);
+				continue;
+			}
+
+			if (!seen.has(pool.id)) {
+				seen.add(pool.id);
+				await tryPredict(resources, pool, options);
+			}
+
+			await sleepUntil(
+				pool.prediction_end_date,
+				postResolveBufferMs,
+				pollIntervalMs,
+				signal,
+			);
+		} catch (err) {
+			emit('error', options.onError?.(err));
+			await sleep(pollIntervalMs, signal);
+		}
+	}
+};
+
+const tryPredict = async (
+	resources: BotResources,
+	pool: OpenPool,
+	options: BotOptions,
+): Promise<void> => {
+	let decision: BotPredictDecision;
+
+	try {
+		decision = await options.predict(pool);
+	} catch (err) {
+		emit('error', options.onError?.(err));
+		emit('skip', options.onPoolSkipped?.({ pool, reason: 'predict-threw' }));
+		return;
+	}
+
+	if (decision === null) {
+		emit(
+			'skip',
+			options.onPoolSkipped?.({ pool, reason: 'predict-returned-null' }),
+		);
+		return;
+	}
+
+	if (!Number.isFinite(decision.value)) {
+		emit('skip', options.onPoolSkipped?.({ pool, reason: 'invalid-value' }));
+		return;
+	}
+
+	if (!Number.isFinite(decision.stake)) {
+		emit('skip', options.onPoolSkipped?.({ pool, reason: 'invalid-stake' }));
+		return;
+	}
+
+	const value = snap(decision.value, pool);
+	const stake = clamp(decision.stake, pool.min_stake, pool.max_stake);
+
+	try {
+		await resources.predictions.create({ poolId: pool.id, stake, value });
+		emit('pred', options.onPredicted?.({ pool, value, stake }));
+	} catch (err) {
+		emit('error', options.onError?.(err));
+	}
+};
 
 const emit = (kind: EventKind, value: string | void): void => {
 	if (typeof value === 'string') writeEvent(kind, value);
-};
-
-const SHUTDOWN_SIGNALS = ['SIGINT', 'SIGTERM'] as const;
-
-interface ResolvedSignal {
-	signal: AbortSignal;
-	dispose: () => void;
-}
-
-const resolveSignal = (provided?: AbortSignal): ResolvedSignal => {
-	if (provided) return { signal: provided, dispose: () => {} };
-
-	const ac = new AbortController();
-	const proc =
-		typeof process !== 'undefined' && typeof process.on === 'function'
-			? process
-			: null;
-
-	if (!proc) return { signal: ac.signal, dispose: () => {} };
-
-	const handler = (): void => ac.abort();
-	for (const sig of SHUTDOWN_SIGNALS) proc.on(sig, handler);
-	return {
-		signal: ac.signal,
-		dispose: () => {
-			for (const sig of SHUTDOWN_SIGNALS) proc.off(sig, handler);
-		},
-	};
 };
 
 function snap(value: number, pool: OpenPool): number {
@@ -242,11 +320,11 @@ function clamp(value: number, min: number, max: number): number {
 	return Math.min(Math.max(value, min), max);
 }
 
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-	if (signal?.aborted) return Promise.resolve();
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+	if (signal.aborted) return Promise.resolve();
 	return new Promise<void>((resolve) => {
 		const done = (): void => {
-			signal?.removeEventListener('abort', onAbort);
+			signal.removeEventListener('abort', onAbort);
 			resolve();
 		};
 		const onAbort = (): void => {
@@ -254,7 +332,7 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 			done();
 		};
 		const timer = setTimeout(done, ms);
-		signal?.addEventListener('abort', onAbort, { once: true });
+		signal.addEventListener('abort', onAbort, { once: true });
 	});
 }
 
@@ -262,7 +340,7 @@ function sleepUntil(
 	isoDate: string,
 	bufferMs: number,
 	minMs: number,
-	signal?: AbortSignal,
+	signal: AbortSignal,
 ): Promise<void> {
 	const ms = new Date(isoDate).getTime() - Date.now() + bufferMs;
 	return sleep(Math.max(ms, minMs), signal);
