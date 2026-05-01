@@ -10,7 +10,7 @@ npm install @trepa/sdk
 
 ## Quickstart
 
-The SDK wraps every REST endpoint in the [API reference](https://docs.trepa.io/developers/api-endpoints) with full TypeScript types and built-in Solana transaction signing. On top of that, it exposes a declarative interface for writing bots — you provide a `predict(pool)` function, the SDK handles the rest:
+The SDK wraps every REST endpoint in the [API reference](https://docs.trepa.io/developers/api-endpoints) with full TypeScript types and built-in Solana transaction signing. On top of that, it exposes a declarative interface for writing bots: you provide a `predict(pool)` function, the SDK handles the rest:
 
 ```ts
 import { Trepa } from '@trepa/sdk'
@@ -26,11 +26,11 @@ await trepa.bot.run({
 })
 ```
 
-That's a complete bot — it places a prediction on every open pool using your function and keeps going until you stop it.
+That's a complete bot. It places a prediction on every open pool using your function and keeps going until you stop it.
 
 ## Examples
 
-- [`examples/liquidity-bot`](./examples/liquidity-bot) — a liquidity-bootstrapping bot for the Bitcoin Flash streak. Uses `trepa.bot.run` with an "anchored consensus" strategy that stays close to the stake-weighted crowd centroid.
+- [`examples/liquidity-bot`](./examples/liquidity-bot): a liquidity-bootstrapping bot for the Bitcoin Flash streak. Uses `trepa.bot.run` with an "anchored consensus" strategy that stays close to the stake-weighted crowd centroid.
 
 For the full set of endpoints and walkthroughs of every flow, see the [docs](https://docs.trepa.io/developers/introduction).
 

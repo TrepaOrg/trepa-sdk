@@ -74,8 +74,8 @@ export class Trepa {
 	}
 
 	/**
-	 * Force a token refresh. The SDK refreshes automatically on 401/403 — you
-	 * normally don't need to call this.
+	 * Force a token refresh. The SDK refreshes automatically on 401/403, so
+	 * you normally don't need to call this.
 	 */
 	refresh(): Promise<void> {
 		return this.auth.refresh()
@@ -88,7 +88,7 @@ export class Trepa {
 
 	/**
 	 * The underlying typed openapi-fetch client. Reach for this when you need
-	 * an endpoint the resource methods don't expose yet — every path in
+	 * an endpoint the resource methods don't expose yet. Every path in
 	 * `openapi.json` is callable here with full type-safety.
 	 */
 	get raw(): Client<paths> {

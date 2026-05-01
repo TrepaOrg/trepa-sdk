@@ -114,7 +114,7 @@ export class PoolsResource extends Resource {
 }
 
 export class StreaksResource extends Resource {
-	/** The Bitcoin Flash streak — the canonical entry point for the SDK. */
+	/** The Bitcoin Flash streak: the canonical entry point for the SDK. */
 	async bitcoin(): Promise<Schema<'StreakBitcoinDto'>> {
 		return this.session.request(() => this.client.GET('/streak/bitcoin'))
 	}
@@ -293,7 +293,7 @@ export class RewardsResource extends Resource {
 	/**
 	 * Claim a pool reward in one call. The `poolId` is used to build the
 	 * transaction; the `rewardId` is required to submit it (the API surfaces
-	 * it on the prediction's relations — see `users.predictions(id, { includes: ['reward'] })`).
+	 * it on the prediction's relations; see `users.predictions(id, { includes: ['reward'] })`).
 	 */
 	async claim(args: {
 		poolId: string

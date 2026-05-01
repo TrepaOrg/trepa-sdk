@@ -73,7 +73,7 @@ const DEFAULT_POST_RESOLVE_BUFFER_MS = 5_000
 
 /**
  * A long-running predictor loop. Subscribes to a streak and calls your
- * `predict` callback once per pool — you decide the value, the bot handles
+ * `predict` callback once per pool. You decide the value, the bot handles
  * polling, dedup, snapping, waiting, and graceful shutdown.
  *
  * ```ts

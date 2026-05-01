@@ -3,7 +3,7 @@
  * Generates `src/api/schema.ts` from `openapi.json`, but first strips any
  * operation flagged with the `x-excluded: true` vendor extension (set by the
  * API's `@ApiExcludeFromPublicDocs()` decorator). The resulting schema only
- * exposes endpoints that are part of the documented public surface — both
+ * exposes endpoints that are part of the documented public surface, so both
  * the resource methods AND `trepa.raw` are then bound to the same path set.
  */
 

@@ -14,8 +14,14 @@ const trepa = new Trepa({
 // We will never win the jackpot — that's the point. Liquidity providers
 // trade outsized upside for steady participation.
 
-const JITTER_FRACTION = 0.005
-const CONSENSUS_FULL_STAKE = 25
+// Treat the pool midpoint as a virtual prediction with this much stake. When
+// the real crowd has put down significantly more, our forecast follows them;
+// when the pool is empty, we fall back to the midpoint.
+const MIDPOINT_PRIOR_STAKE = 25
+
+// Width of the random nudge applied to our final value, as a fraction of the
+// pool's outcome range. Keeps anchored bots from clustering on identical ticks.
+const JITTER_WIDTH = 0.005
 
 await trepa.bot.run({
 	predict: async (pool) => {
@@ -24,26 +30,25 @@ await trepa.bot.run({
 		})
 
 		const midpoint = (pool.min_outcome + pool.max_outcome) / 2
-		const totalStake = predictions.reduce((s, p) => s + p.stake, 0)
+		const range = pool.max_outcome - pool.min_outcome
 
-		let center = midpoint
-		let confidence = 0
-		if (totalStake > 0) {
-			const weighted = predictions.reduce(
-				(s, p) => s + p.prediction * p.stake,
-				0,
-			)
-			center = weighted / totalStake
-			confidence = Math.min(1, totalStake / CONSENSUS_FULL_STAKE)
-		}
+		// Stake-weighted mean of the crowd, anchored to the midpoint by
+		// seeding the accumulator with a virtual prior prediction.
+		const { weighted, totalStake } = predictions.reduce(
+			(acc, p) => ({
+				weighted: acc.weighted + p.prediction * p.stake,
+				totalStake: acc.totalStake + p.stake,
+			}),
+			{
+				weighted: midpoint * MIDPOINT_PRIOR_STAKE,
+				totalStake: MIDPOINT_PRIOR_STAKE,
+			},
+		)
 
-		const blended = center * confidence + midpoint * (1 - confidence)
-		const jitter =
-			(Math.random() - 0.5) *
-			JITTER_FRACTION *
-			(pool.max_outcome - pool.min_outcome)
+		const center = weighted / totalStake
+		const jitter = (Math.random() - 0.5) * JITTER_WIDTH * range
 
-		return { value: blended + jitter, stake: pool.min_stake }
+		return { value: center + jitter, stake: pool.min_stake }
 	},
 	onStart: ({ me }) =>
 		console.log(`Liquidity bot online as @${me.username}`),
