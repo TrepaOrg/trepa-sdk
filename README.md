@@ -81,7 +81,7 @@ await trepa.bots.run({
 
 ### The loop
 
-Each bot polls the streak for its open pool, calls `predict` once per **new** pool, sleeps until that pool's `prediction_end_date`, and repeats. `Ctrl-C` (or any `SIGINT`/`SIGTERM`) cleanly stops the whole swarm; pass your own `signal` on `BotOptions` to drive shutdown yourself.
+Each bot calls `predict` once per **new** pool, sleeps until that pool's end, and repeats. `Ctrl-C` stops the swarm.
 
 ## Examples
 
