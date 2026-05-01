@@ -81,9 +81,6 @@ jobs:
           mv package.json.tmp package.json
           echo "Bumped version: ${{ steps.compare.outputs.current }} -> ${{ inputs.version }}"
 
-      - name: Generate schema from openapi.json
-        run: pnpm gen
-
       - name: Build SDK (tsup)
         run: pnpm build
 
@@ -102,12 +99,12 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: pnpm publish --no-git-checks --access public --provenance
 
-      - name: Commit version bump and regenerated schema
+      - name: Commit version bump
         if: ${{ !inputs.dry_run }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add package.json src/api/schema.ts
+          git add package.json
           if git diff --cached --quiet; then
             echo "Nothing to commit."
           else

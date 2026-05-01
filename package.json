@@ -51,7 +51,7 @@
     "gen": "node scripts/gen.mjs",
     "build": "tsup",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "pnpm gen && pnpm build"
+    "prepublishOnly": "pnpm build"
   },
   "dependencies": {
     "@solana/kit": "^6.8.0",
