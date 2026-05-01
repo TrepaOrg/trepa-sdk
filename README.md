@@ -35,6 +35,9 @@ await trepa.predictions.create({
 	value: 50_000,
 })
 
+// Give the prediction some time to be indexed.
+await new Promise((resolve) => setTimeout(resolve, 5_000))
+
 // 4. Tweak the prediction while the pool is still open.
 const [active] = await trepa.users.predictions(me.id, {
 	filter_by: ['ACTIVE'],
