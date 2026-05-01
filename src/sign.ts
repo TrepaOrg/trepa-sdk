@@ -1,24 +1,39 @@
-import { Keypair, VersionedTransaction } from '@solana/web3.js'
-import bs58 from 'bs58'
+import {
+	createKeyPairFromBytes,
+	getBase58Encoder,
+	getBase64Decoder,
+	getBase64Encoder,
+	getTransactionDecoder,
+	getTransactionEncoder,
+	partiallySignTransaction,
+} from '@solana/kit'
 
 /**
- * Signs a base64-encoded `VersionedTransaction` returned by any Trepa
- * `create` endpoint with the given embedded-wallet private key (base58),
- * and re-encodes the signed transaction back to base64.
+ * Signs a base64-encoded wire-format Solana transaction returned by any
+ * Trepa `create` endpoint with the given embedded-wallet private key
+ * (base58-encoded 64-byte secret key) and re-encodes the signed
+ * transaction back to base64.
  *
  * The result is the `signed_transaction` you send to the matching
  * `submit` endpoint together with the original `proof`.
  */
-export const signTransaction = (
+export const signTransaction = async (
 	base64Transaction: string,
 	privateKeyBase58: string,
-): string => {
-	const transaction = VersionedTransaction.deserialize(
-		Buffer.from(base64Transaction, 'base64'),
+): Promise<string> => {
+	const transactionBytes =
+		getBase64Encoder().encode(base64Transaction)
+	const transaction = getTransactionDecoder().decode(transactionBytes)
+
+	const secretKeyBytes = getBase58Encoder().encode(privateKeyBase58)
+	const keyPair = await createKeyPairFromBytes(secretKeyBytes)
+
+	const signedTransaction = await partiallySignTransaction(
+		[keyPair],
+		transaction,
 	)
 
-	const keypair = Keypair.fromSecretKey(bs58.decode(privateKeyBase58))
-	transaction.sign([keypair])
-
-	return Buffer.from(transaction.serialize()).toString('base64')
+	return getBase64Decoder().decode(
+		getTransactionEncoder().encode(signedTransaction),
+	)
 }

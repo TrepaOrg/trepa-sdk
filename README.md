@@ -5,7 +5,7 @@ Typed TypeScript SDK for the [Trepa API](https://docs.trepa.app/developers/intro
 ## Install
 
 ```bash
-npm install @trepa/sdk @solana/web3.js
+npm install @trepa/sdk @solana/kit
 ```
 
 ## Usage
@@ -29,13 +29,13 @@ const created = unwrap(
 		body: { pool_id: current_pool.id, stake: 1, value: 50_000 },
 	}),
 )
-const signed = signTransaction(created.transaction, process.env.TREPA_PRIVATE_KEY!)
+const signed = await signTransaction(created.transaction, process.env.TREPA_PRIVATE_KEY!)
 await trepa.client.POST('/transactions/prediction/submit', {
 	body: { pool_id: current_pool.id, signed_transaction: signed, proof: created.proof },
 })
 ```
 
-For the full set of endpoints and runnable scripts for every flow (predictions, claims, withdrawals, streak rewards), see the [docs](https://docs.trepa.app/developers/introduction) and [examples](./examples).
+For the full set of endpoints and walkthroughs, visit the [docs](https://docs.trepa.app/developers/introduction).
 
 ## License
 
