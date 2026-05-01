@@ -2,7 +2,7 @@
   "name": "@trepa/example-liquidity-bot",
   "version": "0.0.0",
   "private": true,
-  "description": "Liquidity-bootstrapping bot for the Bitcoin streak.",
+  "description": "Liquidity-bootstrapping bot for Trepa.",
   "type": "module",
   "scripts": {
     "start": "node bot.strategy.ts"

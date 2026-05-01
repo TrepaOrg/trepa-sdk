@@ -1,6 +1,13 @@
 import type { components, operations } from './api/schema';
 import type { Session } from './session';
-import { signTransaction } from './sign';
+
+const sign = async (
+	transaction: string,
+	privateKey: string,
+): Promise<string> => {
+	const { signTransaction } = await import('./sign');
+	return signTransaction(transaction, privateKey);
+};
 
 type Schema<K extends keyof components['schemas']> = components['schemas'][K];
 type Query<K extends keyof operations> = operations[K] extends {
@@ -57,6 +64,7 @@ export class UsersResource extends Resource {
 		);
 	}
 
+	/** List a user's predictions, with optional filters and embeds. */
 	async predictions(
 		id: string,
 		params: Query<'UsersController_findUserPredictions'> = {},
@@ -68,12 +76,14 @@ export class UsersResource extends Resource {
 		);
 	}
 
+	/** Aggregate statistics for a user (P&L, accuracy, streak counts, etc.). */
 	async statistics(id: string): Promise<Schema<'UserStatisticsDto'>> {
 		return this.session.request(() =>
 			this.client.GET('/users/{id}/statistics', { params: { path: { id } } }),
 		);
 	}
 
+	/** A user's on-chain portfolio: balances and holdings. */
 	async portfolio(userId: string): Promise<Schema<'PortfolioDto'>> {
 		return this.session.request(() =>
 			this.client.GET('/users/{user_id}/portfolio', {
@@ -82,6 +92,7 @@ export class UsersResource extends Resource {
 		);
 	}
 
+	/** A user's progress and unclaimed rewards inside a specific streak. */
 	async streakDetails(
 		id: string,
 		streakId: string,
@@ -95,6 +106,7 @@ export class UsersResource extends Resource {
 }
 
 export class PoolsResource extends Resource {
+	/** List pools matching the given filters (by streak, status, etc.). */
 	async list(
 		params: Query<'PoolsController_findMany'> = {},
 	): Promise<Schema<'PoolWithRelationsDto'>[]> {
@@ -103,6 +115,7 @@ export class PoolsResource extends Resource {
 		);
 	}
 
+	/** Get a single pool by id, with optional embeds for related entities. */
 	async get(
 		id: string,
 		params: Query<'PoolsController_find'> = {},
@@ -130,6 +143,7 @@ export class StreaksResource extends Resource {
 		);
 	}
 
+	/** List pools inside a streak (paginated, ordered by reference date). */
 	async pools(
 		streakId: string,
 		params: Omit<RequiredQuery<'StreaksController_getPools'>, 'streak_id'> = {},
@@ -171,10 +185,7 @@ export class StreaksResource extends Resource {
 				}),
 			'Failed to build the claim-streak-reward transaction',
 		);
-		const signed_transaction = await signTransaction(
-			prepared.transaction,
-			privateKey,
-		);
+		const signed_transaction = await sign(prepared.transaction, privateKey);
 		return this.session.request(
 			() =>
 				this.client.POST('/transactions/claim-streak-reward/submit', {
@@ -211,10 +222,7 @@ export class PredictionsResource extends Resource {
 				}),
 			'Failed to build the prediction transaction',
 		);
-		const signed_transaction = await signTransaction(
-			prepared.transaction,
-			privateKey,
-		);
+		const signed_transaction = await sign(prepared.transaction, privateKey);
 		return this.session.request(
 			() =>
 				this.client.POST('/transactions/prediction/submit', {
@@ -241,10 +249,7 @@ export class PredictionsResource extends Resource {
 				}),
 			'Failed to build the update-prediction transaction',
 		);
-		const signed_transaction = await signTransaction(
-			prepared.transaction,
-			privateKey,
-		);
+		const signed_transaction = await sign(prepared.transaction, privateKey);
 		return this.session.request(
 			() =>
 				this.client.POST('/transactions/prediction/update/submit', {
@@ -273,10 +278,7 @@ export class PredictionsResource extends Resource {
 				}),
 			'Failed to build the update-stake transaction',
 		);
-		const signed_transaction = await signTransaction(
-			prepared.transaction,
-			privateKey,
-		);
+		const signed_transaction = await sign(prepared.transaction, privateKey);
 		return this.session.request(
 			() =>
 				this.client.POST('/transactions/stake/update/submit', {
@@ -309,10 +311,7 @@ export class RewardsResource extends Resource {
 				}),
 			'Failed to build the claim-reward transaction',
 		);
-		const signed_transaction = await signTransaction(
-			prepared.transaction,
-			privateKey,
-		);
+		const signed_transaction = await sign(prepared.transaction, privateKey);
 		return this.session.request(
 			() =>
 				this.client.POST('/transactions/claim-reward/submit', {
@@ -346,10 +345,7 @@ export class WithdrawalsResource extends Resource {
 				}),
 			'Failed to build the withdraw transaction',
 		);
-		const signed_transaction = await signTransaction(
-			prepared.transaction,
-			privateKey,
-		);
+		const signed_transaction = await sign(prepared.transaction, privateKey);
 		return this.session.request(
 			() =>
 				this.client.POST('/transactions/withdraw/submit', {

@@ -2,7 +2,7 @@
   "name": "@trepa/example-spot-bot",
   "version": "0.0.0",
   "private": true,
-  "description": "Smallest possible Trepa bot; predicts the current BTC spot price for every open Bitcoin pool.",
+  "description": "Spot price prediction bot for Trepa.",
   "type": "module",
   "scripts": {
     "start": "node bot.strategy.ts"

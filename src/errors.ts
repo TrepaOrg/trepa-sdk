@@ -11,8 +11,11 @@ interface TrepaErrorOptions {
  * structured error fields without re-parsing the response.
  */
 export class TrepaError extends Error {
+	/** HTTP status of the failing response (`0` for client-side errors). */
 	readonly status: number;
+	/** Stable error code from the API (e.g. `'missing_api_key'`), if present. */
 	readonly code?: string;
+	/** Original error payload from the API, untouched. */
 	readonly body: unknown;
 
 	constructor(message: string, options: TrepaErrorOptions) {
@@ -24,6 +27,7 @@ export class TrepaError extends Error {
 	}
 }
 
+/** Type guard: narrows an unknown thrown value to `TrepaError`. */
 export const isTrepaError = (error: unknown): error is TrepaError =>
 	error instanceof TrepaError;
 

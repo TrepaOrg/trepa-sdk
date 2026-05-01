@@ -9,24 +9,6 @@ import { resolve } from 'node:path';
 
 import { fetchBtcPrice, fetchBtcStdLogReturns } from './utils.ts';
 
-/**
- * Quote-ladder strategy for the Bitcoin streak.
- *
- * N bots lay a flat ladder
- * of predictions around BTC spot, sized to actual realized volatility:
- *
- *   σ      = spot · std_log_returns(7d, 1m) · √(minutes_to_resolution)
- *   bot[i] = spot − σ + (i + ½) · 2σ/N   for i ∈ [0, N)
- *
- * Every bot waits until `prediction_end_date − LEAD_TIME_MS` so the
- * spot snapshot is as close to the resolution window as we dare go
- * without missing the cutoff, then submits at min stake.
- *
- * The whole ladder is presence: thin enough per tick that a real
- * predictor can arb against any quote, wide enough as a band that the
- * curve looks alive across the full ±σ outcome region.
- */
-
 const credentials = JSON.parse(
 	readFileSync(resolve(process.cwd(), 'bots.credentials.json'), 'utf8'),
 ) as BotCredentials[];

@@ -164,7 +164,7 @@ export class Session {
 			await this.refresh();
 			return;
 		} catch {
-			// Fall through to a fresh session start when we still have an apiKey.
+			/* empty */
 		}
 		if (this.apiKey) {
 			this.jar.clear();

@@ -8,36 +8,55 @@ import {
 } from './resources';
 import { Session, type SessionConfig } from './session';
 
+/** A pool that's currently open to predictions, with all its relations. */
 export type OpenPool = components['schemas']['PoolWithRelationsDto'];
 type UserDto = components['schemas']['UserDto'];
 
+/** What `predict` returns: a `{ value, stake }` to submit, or `null` to skip. */
 export type BotPredictDecision = { value: number; stake: number } | null;
 
+/** API + signing credentials for one bot in the swarm. */
 export interface BotCredentials {
+	/** The bot's Trepa API key (from your account settings). */
 	apiKey: string;
+	/** Base58-encoded 64-byte Solana secret key for the bot's wallet. */
 	privateKey: string;
 }
 
+/** A bot's seat in the swarm. */
 export interface BotSlot {
+	/** Zero-based index of this bot in the swarm. */
 	index: number;
+	/** Total number of bots in the swarm. */
 	count: number;
 }
 
+/** Context handed to `onStart` once the bot has authenticated. */
 export interface BotContext {
+	/** The user behind this bot's session. */
 	me: UserDto;
+	/** The streak this bot is participating in. */
 	streakId: string;
 }
 
+/** Context handed to `onPredicted` after a successful submission. */
 export interface BotPredictionInfo {
+	/** The pool the prediction was submitted to. */
 	pool: OpenPool;
+	/** Final value submitted (snapped to `pool.step`, clamped to outcome range). */
 	value: number;
+	/** Final stake submitted (clamped to `[min_stake, max_stake]`). */
 	stake: number;
 }
 
+/** Context handed to `onPoolSkipped` whenever the bot skips a pool. */
 export interface BotSkippedInfo {
+	/** The pool that was skipped, or `null` when no pool was open. */
 	pool: OpenPool | null;
+	/** Why the bot skipped the pool. */
 	reason:
 		| 'no-open-pool'
+		| 'started-mid-pool'
 		| 'predict-returned-null'
 		| 'invalid-value'
 		| 'invalid-stake'
@@ -45,6 +64,7 @@ export interface BotSkippedInfo {
 		| 'predict-too-late';
 }
 
+/** Strategy + lifecycle hooks for a single bot in the swarm. */
 export interface BotOptions {
 	/**
 	 * Decide what to predict in a given pool. Return `{ value, stake }` to
@@ -61,7 +81,7 @@ export interface BotOptions {
 	predict: (pool: OpenPool) => BotPredictDecision | Promise<BotPredictDecision>;
 	/** Polling cadence when no pool is open. Default 5s. */
 	pollIntervalMs?: number;
-	/** Extra wait after a pool's `prediction_end_date` before polling again. Default 5s. */
+	/** Extra wait after a pool's `prediction_end_date` before polling again. Default 250ms. */
 	postResolveBufferMs?: number;
 	/**
 	 * Cancel the loop. The whole swarm resolves once the signal aborts.
@@ -88,7 +108,7 @@ export interface BotOptions {
 }
 
 const DEFAULT_POLL_INTERVAL_MS = 5_000;
-const DEFAULT_POST_RESOLVE_BUFFER_MS = 5_000;
+const DEFAULT_POST_RESOLVE_BUFFER_MS = 250;
 const SHUTDOWN_SIGNALS = ['SIGINT', 'SIGTERM'] as const;
 
 interface BotResources {
@@ -212,69 +232,161 @@ const withTag = (slot: BotSlot, opts: BotOptions): BotOptions => {
 	};
 };
 
+type BotState =
+	| { kind: 'polling' }
+	| { kind: 'no_open_pool' }
+	| { kind: 'skipping_in_flight_pool'; pool: OpenPool }
+	| { kind: 'awaiting_start'; pool: OpenPool }
+	| { kind: 'predicting'; pool: OpenPool }
+	| { kind: 'awaiting_end'; pool: OpenPool }
+	| { kind: 'recovering_from_error'; err: unknown }
+	| { kind: 'stopped' };
+
+interface MachineCtx {
+	resources: BotResources;
+	options: BotOptions;
+	signal: AbortSignal;
+	streakId: string;
+	pollIntervalMs: number;
+	postResolveBufferMs: number;
+	seen: Set<string>;
+	isColdStart: boolean;
+}
+
 const runOne = async (
 	resources: BotResources,
 	options: BotOptions,
 	signal: AbortSignal,
 ): Promise<void> => {
-	const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
-	const postResolveBufferMs =
-		options.postResolveBufferMs ?? DEFAULT_POST_RESOLVE_BUFFER_MS;
-
 	const me = await resources.auth.me();
 	const streakId = (await resources.streaks.bitcoin()).id;
 	emit('ready', options.onStart?.({ me, streakId }));
 
-	const seen = new Set<string>();
+	const ctx: MachineCtx = {
+		resources,
+		options,
+		signal,
+		streakId,
+		pollIntervalMs: options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS,
+		postResolveBufferMs:
+			options.postResolveBufferMs ?? DEFAULT_POST_RESOLVE_BUFFER_MS,
+		seen: new Set<string>(),
+		isColdStart: true,
+	};
 
-	while (!signal.aborted) {
-		try {
-			const { current_pool: pool } =
-				await resources.streaks.poolDetails(streakId);
-
-			if (!pool || pool.is_closed) {
-				emit(
-					'skip',
-					options.onPoolSkipped?.({
-						pool: pool ?? null,
-						reason: 'no-open-pool',
-					}),
-				);
-				await sleep(pollIntervalMs, signal);
-				continue;
-			}
-
-			// Predictions are only valid inside `[prediction_start_date,
-			// prediction_end_date)`. The API returns 403 outside that window.
-			const startMs = new Date(pool.prediction_start_date).getTime();
-			const endMs = new Date(pool.prediction_end_date).getTime();
-
-			if (Date.now() < startMs) {
-				await sleep(startMs - Date.now(), signal);
-				continue;
-			}
-
-			if (Date.now() >= endMs) {
-				await sleep(pollIntervalMs, signal);
-				continue;
-			}
-
-			if (!seen.has(pool.id)) {
-				seen.add(pool.id);
-				await tryPredict(resources, pool, options, endMs);
-			}
-
-			await sleepUntil(
-				pool.prediction_end_date,
-				postResolveBufferMs,
-				pollIntervalMs,
-				signal,
-			);
-		} catch (err) {
-			emit('error', options.onError?.(err));
-			await sleep(pollIntervalMs, signal);
+	let state: BotState = { kind: 'polling' };
+	while (state.kind !== 'stopped') {
+		if (signal.aborted) {
+			state = { kind: 'stopped' };
+			break;
 		}
+		state = await advance(state, ctx);
 	}
+};
+
+const advance = async (state: BotState, ctx: MachineCtx): Promise<BotState> => {
+	switch (state.kind) {
+		case 'polling':
+			return classify(ctx);
+
+		case 'no_open_pool':
+			await sleep(ctx.pollIntervalMs, ctx.signal);
+			return { kind: 'polling' };
+
+		case 'skipping_in_flight_pool':
+			ctx.seen.add(state.pool.id);
+			emit(
+				'skip',
+				ctx.options.onPoolSkipped?.({
+					pool: state.pool,
+					reason: 'started-mid-pool',
+				}),
+			);
+			await sleepUntil(
+				state.pool.prediction_end_date,
+				ctx.postResolveBufferMs,
+				ctx.pollIntervalMs,
+				ctx.signal,
+			);
+			return { kind: 'polling' };
+
+		case 'awaiting_start': {
+			const wait =
+				new Date(state.pool.prediction_start_date).getTime() - Date.now();
+			if (wait > 0) await sleep(wait, ctx.signal);
+			return { kind: 'predicting', pool: state.pool };
+		}
+
+		case 'predicting': {
+			ctx.seen.add(state.pool.id);
+			const deadlineMs = new Date(state.pool.prediction_end_date).getTime();
+			await tryPredict(ctx.resources, state.pool, ctx.options, deadlineMs);
+			return { kind: 'awaiting_end', pool: state.pool };
+		}
+
+		case 'awaiting_end':
+			await sleepUntil(
+				state.pool.prediction_end_date,
+				ctx.postResolveBufferMs,
+				ctx.pollIntervalMs,
+				ctx.signal,
+			);
+			return { kind: 'polling' };
+
+		case 'recovering_from_error':
+			emit('error', ctx.options.onError?.(state.err));
+			await sleep(ctx.pollIntervalMs, ctx.signal);
+			return { kind: 'polling' };
+
+		case 'stopped':
+			return state;
+	}
+};
+
+const classify = async (ctx: MachineCtx): Promise<BotState> => {
+	let pool: OpenPool | null;
+	try {
+		pool =
+			(await ctx.resources.streaks.poolDetails(ctx.streakId)).current_pool ??
+			null;
+	} catch (err) {
+		return { kind: 'recovering_from_error', err };
+	}
+
+	if (!pool || pool.is_closed) {
+		emit(
+			'skip',
+			ctx.options.onPoolSkipped?.({
+				pool: pool ?? null,
+				reason: 'no-open-pool',
+			}),
+		);
+		return { kind: 'no_open_pool' };
+	}
+
+	const now = Date.now();
+	const startMs = new Date(pool.prediction_start_date).getTime();
+	const endMs = new Date(pool.prediction_end_date).getTime();
+
+	if (ctx.isColdStart && now >= startMs) {
+		ctx.isColdStart = false;
+		return { kind: 'skipping_in_flight_pool', pool };
+	}
+	ctx.isColdStart = false;
+
+	if (ctx.seen.has(pool.id)) {
+		return { kind: 'awaiting_end', pool };
+	}
+
+	if (now >= endMs) {
+		return { kind: 'no_open_pool' };
+	}
+
+	if (now < startMs) {
+		return { kind: 'awaiting_start', pool };
+	}
+
+	return { kind: 'predicting', pool };
 };
 
 const tryPredict = async (
@@ -311,9 +423,6 @@ const tryPredict = async (
 		return;
 	}
 
-	// Re-check the window: `predict()` can do async work (fetch price,
-	// wait until close-N seconds, etc.) that pushes us past
-	// `prediction_end_date`, in which case the API would 403 us.
 	if (Date.now() >= deadlineMs) {
 		emit('skip', options.onPoolSkipped?.({ pool, reason: 'predict-too-late' }));
 		return;

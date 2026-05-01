@@ -8,10 +8,9 @@ export default defineConfig({
 	format: ['esm', 'cjs'],
 	target: 'node20',
 	dts: true,
-	sourcemap: true,
+	sourcemap: false,
 	clean: true,
 	treeshake: true,
-	splitting: false,
-	minify: false,
-	noExternal: ['@solana/kit'],
+	splitting: true,
+	minify: true,
 });

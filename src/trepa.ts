@@ -13,6 +13,7 @@ import {
 } from './resources';
 import { Session } from './session';
 
+/** Configuration for a `Trepa` client. */
 export interface TrepaConfig {
 	/**
 	 * One credential per bot in the swarm. The first entry doubles as the
@@ -48,13 +49,21 @@ export interface TrepaConfig {
 export class Trepa {
 	private readonly session: Session;
 
+	/** Authentication: session lifecycle and the current user. */
 	readonly auth: AuthResource;
+	/** Profiles, predictions history, statistics, and portfolios for any user. */
 	readonly users: UsersResource;
+	/** Browse and inspect individual pools across all streaks. */
 	readonly pools: PoolsResource;
+	/** Streak overview, open pools, and claimable streak rewards. */
 	readonly streaks: StreaksResource;
+	/** Submit, update, and resize predictions on open pools. */
 	readonly predictions: PredictionsResource;
+	/** Claim payouts on resolved pools. */
 	readonly rewards: RewardsResource;
+	/** Withdraw USDC from your Trepa balance to an external Solana wallet. */
 	readonly withdrawals: WithdrawalsResource;
+	/** Run one or more long-running predictor loops in parallel. */
 	readonly bots: Bots;
 
 	constructor(config: TrepaConfig = {}) {
