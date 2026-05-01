@@ -25,7 +25,7 @@ await trepa.bots.run({
 		return { value, stake };
 	},
 	onStart: ({ me }) => {
-		return `online as ${me.username}`;
+		return `logged in as ${me.username}`;
 	},
 	onPredicted: ({ pool, value, stake }) => {
 		return `${pool.title} → ${formatNumber(value, pool.precision)} @ ${formatNumber(stake, 2)} USDC`;

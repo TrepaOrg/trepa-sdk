@@ -49,7 +49,7 @@ await trepa.bots.run(({ index, count }) => ({
       ((index + 0.5) / count) * (pool.max_outcome - pool.min_outcome),
     stake: pool.min_stake,
   }),
-  onStart: ({ me }) => `online as @${me.username}`,
+  onStart: ({ me }) => `logged in as @${me.username}`,
   onPredicted: ({ pool, value, stake }) =>
     `${pool.title} → ${formatNumber(value, pool.precision)} @ ${formatNumber(stake, 2)} USDC`,
   onPoolSkipped: ({ pool, reason }) => `${pool?.title} — ${reason}`,
