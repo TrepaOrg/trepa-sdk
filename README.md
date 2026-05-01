@@ -1,6 +1,6 @@
 # @trepa/sdk
 
-TREPA-SDK is the official TypeScript SDK for the [Trepa API](https://docs.trepa.app/developers/introduction).
+Trepa SDK is the official TypeScript SDK for the [Trepa API](https://docs.trepa.app/developers/introduction).
 
 ## Install
 
