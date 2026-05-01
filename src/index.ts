@@ -10,4 +10,5 @@ export type {
 	BotSkippedInfo,
 	OpenPool,
 } from './bot';
+export { formatNumber, formatError } from './format';
 export type { components, operations, paths } from './api/schema';

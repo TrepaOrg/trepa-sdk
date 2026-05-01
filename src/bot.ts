@@ -1,4 +1,5 @@
 import type { components } from './api/schema';
+import { type EventKind, writeEvent } from './format';
 import type {
 	AuthResource,
 	PredictionsResource,
@@ -32,8 +33,6 @@ export interface BotSkippedInfo {
 }
 
 export interface BotOptions {
-	/** Streak to follow. Defaults to the Bitcoin streak. */
-	streakId?: string;
 	/**
 	 * Decide what to predict in a given pool. Return `{ value, stake }` to
 	 * submit a prediction, or `null` to skip the pool. The returned `value`
@@ -60,14 +59,16 @@ export interface BotOptions {
 	 * yourself or coordinate with other lifecycles.
 	 */
 	signal?: AbortSignal;
-	/** Called once before the loop starts. */
-	onStart?: (ctx: BotContext) => void;
-	/** Called after a successful prediction. */
-	onPredicted?: (info: BotPredictionInfo) => void;
-	/** Called when a pool is skipped (no pool open, predict returned null, etc). */
-	onPoolSkipped?: (info: BotSkippedInfo) => void;
-	/** Called on every loop error. Defaults to `console.error`. */
-	onError?: (err: unknown) => void;
+	/**
+	 * Lifecycle callbacks. All optional. Return a string to have the bot
+	 * print it on the matching color-coded line — e.g. `[READY]: ...`,
+	 * `[PRED]: ...`, `[SKIP]: ...`, `[ERROR]: ...`. Return nothing (or run
+	 * your own `console.log` inside) to stay silent or hand-roll output.
+	 */
+	onStart?: (ctx: BotContext) => string | void;
+	onPredicted?: (info: BotPredictionInfo) => string | void;
+	onPoolSkipped?: (info: BotSkippedInfo) => string | void;
+	onError?: (err: unknown) => string | void;
 }
 
 const DEFAULT_POLL_INTERVAL_MS = 15_000;
@@ -79,17 +80,15 @@ const DEFAULT_POST_RESOLVE_BUFFER_MS = 5_000;
  * polling, dedup, snapping, waiting, and graceful shutdown.
  *
  * ```ts
- * const ac = new AbortController()
- * process.on('SIGINT', () => ac.abort())
+ * import { Trepa, formatNumber } from '@trepa/sdk'
  *
  * await trepa.bot.run({
- *   signal: ac.signal,
  *   predict: (pool) => ({
  *     value: (pool.min_outcome + pool.max_outcome) / 2,
  *     stake: pool.min_stake,
  *   }),
- *   onPredicted: ({ pool, value, stake }) =>
- *     console.log(`[${pool.title}] ${value} @ ${stake}`),
+ *   onPredicted: ({ pool, value }) =>
+ *     `${pool.title} → ${formatNumber(value, pool.precision)}`,
  * })
  * ```
  */
@@ -112,13 +111,12 @@ export class Bot {
 		const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
 		const postResolveBufferMs =
 			options.postResolveBufferMs ?? DEFAULT_POST_RESOLVE_BUFFER_MS;
-		const onError = options.onError ?? defaultOnError;
 		const { signal, dispose } = resolveSignal(options.signal);
 
 		try {
 			const me = await this.auth.me();
-			const streakId = options.streakId ?? (await this.streaks.bitcoin()).id;
-			options.onStart?.({ me, streakId });
+			const streakId = (await this.streaks.bitcoin()).id;
+			emit('ready', options.onStart?.({ me, streakId }));
 
 			const seen = new Set<string>();
 
@@ -128,17 +126,20 @@ export class Bot {
 						await this.streaks.poolDetails(streakId);
 
 					if (!pool || pool.is_closed) {
-						options.onPoolSkipped?.({
-							pool: pool ?? null,
-							reason: 'no-open-pool',
-						});
+						emit(
+							'skip',
+							options.onPoolSkipped?.({
+								pool: pool ?? null,
+								reason: 'no-open-pool',
+							}),
+						);
 						await sleep(pollIntervalMs, signal);
 						continue;
 					}
 
 					if (!seen.has(pool.id)) {
 						seen.add(pool.id);
-						await this.tryPredict(pool, options, onError);
+						await this.tryPredict(pool, options);
 					}
 
 					await sleepUntil(
@@ -148,7 +149,7 @@ export class Bot {
 						signal,
 					);
 				} catch (err) {
-					onError(err);
+					emit('error', options.onError?.(err));
 					await sleep(pollIntervalMs, signal);
 				}
 			}
@@ -160,30 +161,38 @@ export class Bot {
 	private async tryPredict(
 		pool: OpenPool,
 		options: BotOptions,
-		onError: (err: unknown) => void,
 	): Promise<void> {
 		let decision: BotPredictDecision;
 
 		try {
 			decision = await options.predict(pool);
 		} catch (err) {
-			onError(err);
-			options.onPoolSkipped?.({ pool, reason: 'predict-threw' });
+			emit('error', options.onError?.(err));
+			emit('skip', options.onPoolSkipped?.({ pool, reason: 'predict-threw' }));
 			return;
 		}
 
 		if (decision === null) {
-			options.onPoolSkipped?.({ pool, reason: 'predict-returned-null' });
+			emit(
+				'skip',
+				options.onPoolSkipped?.({ pool, reason: 'predict-returned-null' }),
+			);
 			return;
 		}
 
 		if (!Number.isFinite(decision.value)) {
-			options.onPoolSkipped?.({ pool, reason: 'invalid-value' });
+			emit(
+				'skip',
+				options.onPoolSkipped?.({ pool, reason: 'invalid-value' }),
+			);
 			return;
 		}
 
 		if (!Number.isFinite(decision.stake)) {
-			options.onPoolSkipped?.({ pool, reason: 'invalid-stake' });
+			emit(
+				'skip',
+				options.onPoolSkipped?.({ pool, reason: 'invalid-stake' }),
+			);
 			return;
 		}
 
@@ -192,15 +201,15 @@ export class Bot {
 
 		try {
 			await this.predictions.create({ poolId: pool.id, stake, value });
-			options.onPredicted?.({ pool, value, stake });
+			emit('pred', options.onPredicted?.({ pool, value, stake }));
 		} catch (err) {
-			onError(err);
+			emit('error', options.onError?.(err));
 		}
 	}
 }
 
-const defaultOnError = (err: unknown): void => {
-	console.error('[trepa.bot]', err);
+const emit = (kind: EventKind, value: string | void): void => {
+	if (typeof value === 'string') writeEvent(kind, value);
 };
 
 const SHUTDOWN_SIGNALS = ['SIGINT', 'SIGTERM'] as const;

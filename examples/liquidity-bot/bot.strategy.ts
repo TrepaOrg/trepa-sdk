@@ -1,18 +1,23 @@
-import { Trepa } from '@trepa/sdk';
-import { fetchBtcPrice } from './utils';
+import { formatError, formatNumber, Trepa } from '@trepa/sdk';
+
+import { average, fetchBtcPrice } from './utils';
 
 /**
  * Liquidity-seeding strategy for the Bitcoin streak.
  *
  * For every open pool, anchor a prediction at Binance's live BTC/USDT spot
- * price — the same reference the streak resolves against — then nudge it by
- * a tiny random offset (±0.25% of the pool's outcome range). The jitter is
- * deliberate: stacking every liquidity bot on the exact same tick would
- * leave gaps in the curve, so we spread quotes across nearby steps to give
- * real predictors something to trade against on either side of spot.
+ * price — the same reference the streak resolves against — then pull it
+ * partway toward where other predictors are already clustered. We
+ * re-fetch the pool with `includes: ['predictions']` to read the live
+ * book, take the average of the crowd, and blend 30% of the way from spot
+ * toward it. The crowd usually prices in short-term drift faster than
+ * naked spot does, so following the consensus lowers expected error
+ * without giving up the spot anchor entirely. A small random jitter
+ * (±0.25% of the outcome range) keeps multiple bots from landing on the
+ * exact same tick.
  *
- * Stake is pinned to the pool minimum. The goal here is presence, not
- * profit — be in every pool, cheaply, so the book is never empty.
+ * Stake is pinned to the pool minimum. The goal here is presence with a
+ * touch of edge — be in every pool, cheaply, and lean toward the crowd.
  */
 
 const trepa = new Trepa({
@@ -21,28 +26,35 @@ const trepa = new Trepa({
 	privateKey: process.env.TREPA_PRIVATE_KEY,
 });
 
+const CROWD_PULL = 0.3;
+const JITTER_FRACTION = 0.005;
+
 await trepa.bot.run({
 	predict: async (pool) => {
-		const price = await fetchBtcPrice();
+		const [price, withPredictions] = await Promise.all([
+			fetchBtcPrice(),
+			trepa.pools.get(pool.id, { includes: ['predictions'] }),
+		]);
 
+		const others = withPredictions.predictions ?? [];
 		const range = pool.max_outcome - pool.min_outcome;
-		const jitter = (Math.random() - 0.5) * 0.005 * range;
 
-		const value = price + jitter;
+		const crowdCenter = average(
+			others.map((p) => p.prediction),
+			price,
+		);
+		const target = price + (crowdCenter - price) * CROWD_PULL;
+		const jitter = (Math.random() - 0.5) * JITTER_FRACTION * range;
+
+		const value = target + jitter;
 		const stake = Math.min(pool.max_stake, pool.min_stake);
 
 		return { value, stake };
 	},
-	onStart: ({ me }) => {
-		console.log(`Liquidity bot online as ${me.username}`);
-	},
-	onPredicted: ({ pool, value, stake }) => {
-		console.log(`[${pool.title}] predicted ${value} with ${stake} stake`);
-	},
-	onError: (err) => {
-		console.error(err);
-	},
-	onPoolSkipped: ({ pool, reason }) => {
-		console.log(`[${pool?.title}] skipped: ${reason}`);
-	},
+	onStart: ({ me }) => `liquidity bot online as @${me.username}`,
+	onPredicted: ({ pool, value, stake }) =>
+		`${pool.title} → ${formatNumber(value, pool.precision)} @ ${formatNumber(stake, 2)} USDC`,
+	onPoolSkipped: ({ pool, reason }) =>
+		`${pool?.title ?? '(no pool open)'} — ${reason}`,
+	onError: (err) => formatError(err),
 });

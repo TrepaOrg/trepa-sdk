@@ -1,6 +1,6 @@
 # liquidity-bot
 
-A minimal liquidity-seeding bot for the **Bitcoin** streak. Predicts the live BTCUSDT spot price (with a tiny random jitter) at min stake on every open pool. See [`bot.strategy.ts`](./bot.strategy.ts) for the strategy.
+A minimal liquidity-seeding bot for the **Bitcoin** streak. See [`bot.strategy.ts`](./bot.strategy.ts) for the strategy.
 
 ## Run
 
