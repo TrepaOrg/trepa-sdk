@@ -58,9 +58,9 @@ await trepa.bots.run({
 
 Full guides at **[docs.trepa.io/developers](https://docs.trepa.io/developers/introduction)**:
 
-- [Quickstart](https://docs.trepa.io/developers/quickstart): a real BTC-spot bot in five minutes.
-- [Writing bots](https://docs.trepa.io/developers/writing-bots): the `predict` contract, lifecycle hooks, and swarms.
-- [SDK reference](https://docs.trepa.io/developers/sdk-reference): every resource on the `Trepa` client.
+- [Quickstart](https://docs.trepa.io/developers/quickstart)
+- [Writing bots](https://docs.trepa.io/developers/writing-bots)
+- [SDK reference](https://docs.trepa.io/developers/sdk-reference)
 
 ## Examples
 
