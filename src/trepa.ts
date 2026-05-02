@@ -1,5 +1,6 @@
 import { Bots, type BotCredentials } from './bot';
 import { TrepaClient } from './client';
+import { ensureTrepaEnvLoaded } from './env-load';
 import { Session } from './session';
 
 const DEFAULT_SOLANA_RPC_URL = 'https://api.mainnet-beta.solana.com';
@@ -71,6 +72,7 @@ export class Trepa extends TrepaClient {
 	readonly solanaRpcSubscriptionsUrl: string;
 
 	constructor(config: TrepaConfig = {}) {
+		ensureTrepaEnvLoaded();
 		const env = trepaProcessEnv();
 		const baseUrl = config.baseUrl ?? envUrl(env.TREPA_BASE_URL);
 		const credentials = config.credentials ?? [];

@@ -1,5 +1,6 @@
 import type { components } from './api/schema';
 import { TrepaClient } from './client';
+import { ensureTrepaEnvLoaded } from './env-load';
 import { TrepaError } from './errors';
 import {
 	type EventKind,
@@ -40,12 +41,9 @@ export interface BotCredentials {
  * The helper returns every consecutive indexed pair until one is missing,
  * or falls back to the unindexed pair otherwise.
  *
- * Run your bot with Node's built-in env loader so a `.env` file is picked
- * up automatically:
- *
- * ```sh
- * node --env-file=.env bot.ts
- * ```
+ * On Node 20+, the SDK loads `.env.local` then `.env` once before reading
+ * variables (without overwriting anything already set by the host). You can
+ * still use `node --env-file=.env bot.ts` if you prefer.
  *
  * Throws `TrepaError` if no credentials are set, or if a pair is half
  * set (e.g. an `apiKey` without a `privateKey`).
@@ -60,6 +58,7 @@ const trimEnv = (value: string | undefined): string | undefined => {
 };
 
 export const credentialsFromEnv = (): BotCredentials[] => {
+	ensureTrepaEnvLoaded();
 	const env: Record<string, string | undefined> =
 		typeof process !== 'undefined' && process.env ? process.env : {};
 
