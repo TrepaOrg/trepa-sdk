@@ -34,9 +34,7 @@ const FUNDER_SHUTDOWN_WAIT_MS = 15_000;
 const ANSI_GREEN = '\x1b[92m';
 const ANSI_RESET = '\x1b[0m';
 const useColor =
-	typeof process !== 'undefined' &&
-	process.stdout?.isTTY === true &&
-	process.env.NO_COLOR === undefined;
+	typeof process !== 'undefined' && process.stdout?.isTTY === true;
 const logTag = useColor ? `${ANSI_GREEN}[FUND]${ANSI_RESET}` : '[FUND]';
 
 const log = (msg: string): void => {
