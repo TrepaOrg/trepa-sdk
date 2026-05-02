@@ -105,9 +105,9 @@ export interface BotSlot {
 }
 
 /**
- * Per-slot context handed to `predict` and the lifecycle hooks. Everything
- * is bound to this bot's own session — calls on `ctx.trepa` hit the API
- * as this bot's identity, never as the swarm's first slot.
+ * Runtime context for the current bot slot, passed to `predict` and lifecycle
+ * hooks. Everything is bound to this bot's session — calls on `ctx.trepa` hit
+ * the API as this bot's identity, never as the swarm's first slot.
  */
 export interface BotContext {
 	/** This bot's seat in the swarm. */
@@ -166,8 +166,9 @@ export interface BotOptions {
 	 * `[pool.min_outcome, pool.max_outcome]`. The `stake` is clamped to
 	 * `[pool.min_stake, pool.max_stake]`.
 	 *
-	 * The second argument is the slot's context (`{ slot, me, trepa, signal }`).
-	 * Use `ctx.trepa` to call any other API endpoint as this specific bot
+	 * The second argument is this slot's {@link BotContext} (runtime for this
+	 * runner: seat, user, slot-scoped client, shutdown signal). Use `ctx.trepa`
+	 * to call any other API endpoint as this specific bot
 	 * — for example `ctx.trepa.users.statistics(ctx.me.id)`. Shutdown does not
 	 * wait on `predict`: the SDK races it against `ctx.signal`. Optionally
 	 * pass `signal` into `fetch` or other APIs that support `AbortSignal`.
@@ -196,18 +197,15 @@ export interface BotOptions {
 	 * On shutdown (whether via this signal, `SIGINT`/`SIGTERM`, or an
 	 * unhandled error), each bot's session is invalidated server-side via
 	 * `auth.logout()` before `bots.run` resolves. Logout failures are logged
-	 * (including via `onError` when you override error lines) and never block
+	 * (including via `onError` when set) and never block
 	 * the swarm from exiting.
 	 */
 	signal?: AbortSignal;
 	/**
-	 * Optional lifecycle hooks. Omit them (or return `undefined`) to use the
-	 * SDK's default lines for `[READY]`, `[PRED]`, `[SKIP]`, and `[ERROR]`.
-	 * Return a string to replace only that event's line. You can still use
-	 * `console.log` inside a hook for extra output.
-	 *
-	 * With more than one bot, the SDK prefixes lines with `[i/N]` for both
-	 * defaults and custom strings you return.
+	 * Optional lifecycle hooks: `onStart`, `onPredicted`, `onPoolSkipped`,
+	 * `onError`. Use them to react after auth, after a successful submission,
+	 * when a pool is skipped, or on errors. Each receives a typed payload;
+	 * return `string` or `void` per the `BotOptions` typings.
 	 */
 	onStart?: (ctx: BotContext) => string | void;
 	onPredicted?: (info: BotPredictionInfo) => string | void;
