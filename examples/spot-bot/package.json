@@ -8,7 +8,7 @@
     "node": ">=22.12.0"
   },
   "dependencies": {
-    "@trepa/sdk": "latest"
+    "@trepa/sdk": "^0.1.22"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
