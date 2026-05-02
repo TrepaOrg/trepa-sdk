@@ -6,6 +6,20 @@ export const fetchBtcPrice = async (): Promise<number> => {
 	return Number(price);
 };
 
+// Winitzki's approximation of the inverse error function (~3 decimal accuracy,
+// plenty for placing prediction values).
+const erfinv = (x: number): number => {
+	const a = 0.147;
+	const ln = Math.log(1 - x * x);
+	const t = 2 / (Math.PI * a) + ln / 2;
+	return Math.sign(x) * Math.sqrt(Math.sqrt(t * t - ln / a) - t);
+};
+
+// Inverse standard normal CDF (probit): maps p ∈ (0, 1) → z-score.
+export const inverseNormalCdf = (p: number): number => {
+	return Math.SQRT2 * erfinv(2 * p - 1);
+};
+
 const PYTH_API_URL =
 	'https://benchmarks.pyth.network/v1/shims/tradingview/history';
 const PYTH_BTC_SYMBOL = 'Crypto.BTC/USD';

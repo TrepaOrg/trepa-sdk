@@ -5,11 +5,15 @@ import {
 	Trepa,
 } from '@trepa/sdk';
 
-import { fetchBtcPrice, fetchBtcStdLogReturns } from './utils.ts';
+import {
+	fetchBtcPrice,
+	fetchBtcStdLogReturns,
+	inverseNormalCdf,
+} from './utils.ts';
 
 const trepa = new Trepa({ credentials: credentialsFromEnv() });
 
-const LEAD_TIME_MS = 8_000;
+const LEAD_TIME_MS = 10_000;
 
 await trepa.bots.run(({ index, count }) => ({
 	predict: async (pool) => {
@@ -20,19 +24,20 @@ await trepa.bots.run(({ index, count }) => ({
 			await new Promise((resolve) => setTimeout(resolve, waitMs));
 		}
 
+		const resolutionMinutes = Math.max(
+			0,
+			(new Date(pool.reference_date).getTime() - closeTs) / 60_000,
+		);
+
 		const [price, stdLogReturns] = await Promise.all([
 			fetchBtcPrice(),
 			fetchBtcStdLogReturns(),
 		]);
 
-		const resolutionMinutes = Math.max(
-			0,
-			(new Date(pool.reference_date).getTime() - closeTs) / 60_000,
-		);
 		const sigma = price * stdLogReturns * Math.sqrt(resolutionMinutes);
 
-		const sliceWidth = (2 * sigma) / count;
-		const offset = -sigma + (index + 0.5) * sliceWidth;
+		const quantile = (index + 0.5) / count;
+		const offset = sigma * inverseNormalCdf(quantile);
 
 		const value = price + offset;
 		const stake = pool.min_stake;
