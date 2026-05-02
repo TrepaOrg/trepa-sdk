@@ -1,8 +1,4 @@
-export {
-	ensureTrepaEnvLoaded,
-	getTrepaEnvLoadSummary,
-	type TrepaEnvLoadSummary,
-} from './env-load';
+export { ensureTrepaEnvLoaded } from './env-load';
 export { Trepa, type TrepaConfig } from './trepa';
 export { TrepaClient } from './client';
 export { TrepaError, isTrepaError } from './errors';

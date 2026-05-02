@@ -1,6 +1,5 @@
 import { createConsola } from 'consola';
 
-import { getTrepaEnvLoadSummary } from './env-load';
 import { DEFAULT_TREPA_API_BASE_URL } from './session';
 import { SDK_DOCS_URL, SDK_VERSION } from './version';
 
@@ -28,22 +27,11 @@ export function logBotSwarmStartup(opts: {
 	credentialCount: number;
 	apiBaseUrl?: string;
 }): void {
-	const { loadedFiles } = getTrepaEnvLoadSummary();
 	const api = opts.apiBaseUrl?.trim() || DEFAULT_TREPA_API_BASE_URL;
 
 	trepaLog.log(`${leadSymbol} @trepa/sdk v${SDK_VERSION}`);
 	trepaLog.log(`- Docs: ${SDK_DOCS_URL}`);
 	trepaLog.log(`- API: ${api}`);
-
-	if (loadedFiles.length === 0) {
-		trepaLog.log(
-			'- Env: no Trepa env file found (.env.local / .env / TREPA_ENV_FILE)',
-		);
-	} else {
-		for (const file of loadedFiles) {
-			trepaLog.log(`- Env: loaded ${file}`);
-		}
-	}
 
 	const n = opts.credentialCount;
 	trepaLog.log(
