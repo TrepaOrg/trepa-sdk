@@ -14,3 +14,5 @@ export TREPA_PRIVATE_KEY_1=…
 
 docker compose up --build
 ```
+
+`Ctrl-C` stops the container.
