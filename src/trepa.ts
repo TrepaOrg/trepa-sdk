@@ -10,8 +10,9 @@ const trepaProcessEnv = (): Record<string, string | undefined> =>
 	typeof process !== 'undefined' && process.env ? process.env : {};
 
 function envUrl(value: string | undefined): string | undefined {
-	if (value === undefined || value === '') return undefined;
-	return value;
+	if (value === undefined) return undefined;
+	const t = value.trim();
+	return t === '' ? undefined : t;
 }
 
 /** Configuration for a `Trepa` client. */

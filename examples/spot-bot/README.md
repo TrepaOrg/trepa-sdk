@@ -8,9 +8,7 @@ price (from Binance) for every open Bitcoin pool at **min stake**.
 ## Run with Docker
 
 ```bash
-export TREPA_API_KEY=...
-export TREPA_PRIVATE_KEY=...
-
+cp .env.example .env
 docker compose up --build
 ```
 

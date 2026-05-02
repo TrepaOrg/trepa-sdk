@@ -57,6 +57,7 @@
   },
   "dependencies": {
     "@solana/kit": "^6.8.0",
+    "consola": "^3.4.2",
     "openapi-fetch": "^0.17.0"
   },
   "devDependencies": {

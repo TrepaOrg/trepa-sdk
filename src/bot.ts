@@ -49,7 +49,16 @@ export interface BotCredentials {
  *
  * Throws `TrepaError` if no credentials are set, or if a pair is half
  * set (e.g. an `apiKey` without a `privateKey`).
+ *
+ * Leading/trailing whitespace (including stray `\\r` from CRLF `.env` files)
+ * is trimmed from keys and secrets.
  */
+const trimEnv = (value: string | undefined): string | undefined => {
+	if (value === undefined) return undefined;
+	const t = value.trim();
+	return t === '' ? undefined : t;
+};
+
 export const credentialsFromEnv = (): BotCredentials[] => {
 	const env: Record<string, string | undefined> =
 		typeof process !== 'undefined' && process.env ? process.env : {};
@@ -60,8 +69,8 @@ export const credentialsFromEnv = (): BotCredentials[] => {
 	) {
 		const credentials: BotCredentials[] = [];
 		for (let i = 1; ; i++) {
-			const apiKey = env[`TREPA_API_KEY_${i}`];
-			const privateKey = env[`TREPA_PRIVATE_KEY_${i}`];
+			const apiKey = trimEnv(env[`TREPA_API_KEY_${i}`]);
+			const privateKey = trimEnv(env[`TREPA_PRIVATE_KEY_${i}`]);
 			if (apiKey === undefined && privateKey === undefined) break;
 			if (!apiKey || !privateKey) {
 				throw new TrepaError(
@@ -76,8 +85,8 @@ export const credentialsFromEnv = (): BotCredentials[] => {
 		return credentials;
 	}
 
-	const apiKey = env.TREPA_API_KEY;
-	const privateKey = env.TREPA_PRIVATE_KEY;
+	const apiKey = trimEnv(env.TREPA_API_KEY);
+	const privateKey = trimEnv(env.TREPA_PRIVATE_KEY);
 	if (apiKey && privateKey) return [{ apiKey, privateKey }];
 	if (apiKey || privateKey) {
 		throw new TrepaError(

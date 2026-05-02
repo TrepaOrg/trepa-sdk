@@ -10,10 +10,7 @@ median and fewer in the tails. See [`bot.strategy.ts`](./bot.strategy.ts).
 ## Run with Docker
 
 ```bash
-export TREPA_MASTER_PRIVATE_KEY=...
-export TREPA_API_KEY_1=... 
-export TREPA_PRIVATE_KEY_1=...
-
+cp .env.example .env
 docker compose up --build
 ```
 

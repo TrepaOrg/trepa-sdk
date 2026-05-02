@@ -14,3 +14,10 @@ export type {
 	OpenPool,
 } from './bot';
 export type { components, operations, paths } from './api/schema';
+export {
+	trepaLog,
+	writeEvent,
+	formatNumber,
+	formatError,
+	type EventKind,
+} from './format';

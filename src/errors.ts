@@ -74,8 +74,11 @@ export const errorFromResponse = (
 	fallback: string,
 	unparsedTextBody = false,
 ): TrepaError => {
-	const baseFallback = `${fallback}: ${response.status} ${response.statusText}`.trim();
-	const message = unparsedTextBody ? baseFallback : messageFromBody(body, baseFallback);
+	const baseFallback =
+		`${fallback}: ${response.status} ${response.statusText}`.trim();
+	const message = unparsedTextBody
+		? baseFallback
+		: messageFromBody(body, baseFallback);
 	return new TrepaError(message, {
 		status: response.status,
 		code: codeFromBody(body),
