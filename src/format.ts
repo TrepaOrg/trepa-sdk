@@ -13,14 +13,13 @@ const useColor =
 	process.stdout?.isTTY === true &&
 	process.env.NO_COLOR === undefined;
 
-const leadSymbol = useColor ? '▲' : '>';
+const leadSymbol = '✦';
 
 /**
- * Shared logger for Trepa bots and tooling; tag reads like `[trepa]` in the
- * terminal (consola compact mode).
+ * Shared logger for Trepa bots and tooling — no consola tag prefix on lines.
  */
 export const trepaLog = createConsola({
-	defaults: { tag: 'trepa' },
+	defaults: { tag: '' },
 	formatOptions: {
 		date: false,
 		compact: true,
@@ -28,7 +27,7 @@ export const trepaLog = createConsola({
 	},
 });
 
-/** Next.js-style startup banner: SDK version, env files, credential count. */
+/** Startup banner: SDK version, docs, API, env, credentials, then loop start. */
 export function logBotSwarmStartup(opts: {
 	credentialCount: number;
 	apiBaseUrl?: string;
@@ -36,22 +35,22 @@ export function logBotSwarmStartup(opts: {
 	const { loadedFiles } = getTrepaEnvLoadSummary();
 	const api = opts.apiBaseUrl?.trim() || DEFAULT_TREPA_API_BASE_URL;
 
-	trepaLog.info(`${leadSymbol} @trepa/sdk v${SDK_VERSION}`);
-	trepaLog.info(`- Docs: ${SDK_DOCS_URL}`);
-	trepaLog.info(`- API: ${api}`);
+	trepaLog.log(`${leadSymbol} @trepa/sdk v${SDK_VERSION}`);
+	trepaLog.log(`- Docs: ${SDK_DOCS_URL}`);
+	trepaLog.log(`- API: ${api}`);
 
 	if (loadedFiles.length === 0) {
-		trepaLog.info(
+		trepaLog.log(
 			'- Env: no Trepa env file found (.env.local / .env / TREPA_ENV_FILE)',
 		);
 	} else {
 		for (const file of loadedFiles) {
-			trepaLog.info(`- Env: loaded ${file}`);
+			trepaLog.log(`- Env: loaded ${file}`);
 		}
 	}
 
 	const n = opts.credentialCount;
-	trepaLog.info(
+	trepaLog.log(
 		`- Credentials: ${n} loaded (${n === 1 ? 'single bot' : `${n}-bot swarm`})`,
 	);
 
@@ -79,8 +78,8 @@ export const formatError = (err: unknown): string => {
 export type EventKind = 'ready' | 'pred' | 'skip' | 'error';
 
 /**
- * One-line bot events mapped to consola types. Skip uses `info` (not `log`)
- * so compact output keeps the same icon column as banner/shutdown lines.
+ * One-line bot events mapped to consola types. Skip uses `info` so skips align
+ * with an icon column (startup banner lines use plain `log` instead).
  */
 export const writeEvent = (kind: EventKind, message: string): void => {
 	switch (kind) {

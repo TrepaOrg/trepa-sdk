@@ -12,6 +12,7 @@
     "typescript"
   ],
   "homepage": "https://github.com/TrepaOrg/trepa-sdk#readme",
+  "documentation": "https://docs.trepa.io/developers/introduction",
   "bugs": {
     "url": "https://github.com/TrepaOrg/trepa-sdk/issues"
   },
