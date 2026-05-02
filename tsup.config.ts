@@ -12,5 +12,5 @@ export default defineConfig({
 	clean: true,
 	treeshake: true,
 	splitting: true,
-	minify: true,
+	minify: false,
 });
