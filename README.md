@@ -62,7 +62,10 @@ Run it with Node's built-in env loader:
 node --env-file=.env bot.ts
 ```
 
-`bots.run` calls your `predict` once per open Bitcoin pool, signs and submits the prediction with your wallet, then sleeps until the next pool. For a swarm, set `TREPA_API_KEY_1` / `TREPA_PRIVATE_KEY_1`, `_2`, `_3`, ... and `credentialsFromEnv()` returns them all.
+`bots.run` calls your `predict` once per open Bitcoin pool, signs and submits the prediction, then polls for the next pool.
+
+For a swarm, set `TREPA_API_KEY_1` / `TREPA_PRIVATE_KEY_1`,
+`_2`, `_3`, … and `credentialsFromEnv()` returns every consecutive pair.
 
 Full guides at **[docs.trepa.io/developers](https://docs.trepa.io/developers/introduction)**:
 
@@ -72,8 +75,10 @@ Full guides at **[docs.trepa.io/developers](https://docs.trepa.io/developers/int
 
 ## Examples
 
-- [`examples/spot-bot`](./examples/spot-bot): one credential, predicts live BTC spot at min stake. Start here.
-- [`examples/liquidity-bot`](./examples/liquidity-bot): a swarm quoting a volatility-sized price ladder around BTC spot.
+- [`examples/spot-bot`](./examples/spot-bot): one credential, live BTC spot at
+  min stake. Start here.
+- [`examples/liquidity-bot`](./examples/liquidity-bot): swarm + Gaussian ladder
+  around spot, optional `withManager` master-wallet funder.
 
 ## License
 

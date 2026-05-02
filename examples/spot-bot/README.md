@@ -1,6 +1,7 @@
 # spot-bot
 
-The smallest possible Trepa bot: one credential, predicts the current BTC spot price (fetched from Binance) for every open Bitcoin pool at min stake. See [`bot.strategy.ts`](./bot.strategy.ts).
+The smallest possible Trepa bot: one credential, predicts the current BTC spot
+price (from Binance) for every open Bitcoin pool at **min stake**.
 
 ## Run
 

@@ -1,7 +1,5 @@
 /**
- * Tiny, dependency-free formatting helpers used by the bot loop and
- * re-exported for callers who want consistent number/error formatting in
- * their own log lines.
+ * Console helpers for the bot loop (`writeEvent`, `formatNumber`, `formatError`).
  */
 
 const ANSI = {

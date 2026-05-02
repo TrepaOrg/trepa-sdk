@@ -1,7 +1,12 @@
 import type { components } from './api/schema';
 import { TrepaClient } from './client';
 import { TrepaError } from './errors';
-import { type EventKind, writeEvent } from './format';
+import {
+	type EventKind,
+	formatError,
+	formatNumber,
+	writeEvent,
+} from './format';
 import { Session, type SessionConfig } from './session';
 
 /** A pool that's currently open to predictions, with all its relations. */
@@ -116,6 +121,14 @@ export interface BotContext {
 	 * `ctx.trepa.rewards.claim(...)`, `ctx.trepa.raw.GET(...)`, etc.
 	 */
 	trepa: TrepaClient;
+	/**
+	 * Aborts when this bot should shut down (`Ctrl-C` / `SIGTERM` on the
+	 * process, or the swarm-level abort). The SDK races `predict` against
+	 * this signal automatically so shutdown does not wait on in-flight work.
+	 * You can still pass `signal` into APIs that accept it (e.g.
+	 * `fetch(url, { signal })`) for cooperative cancellation.
+	 */
+	signal: AbortSignal;
 }
 
 /** Context handed to `onPredicted` after a successful submission. */
@@ -137,6 +150,7 @@ export interface BotSkippedInfo {
 		| 'no-open-pool'
 		| 'started-mid-pool'
 		| 'predict-returned-null'
+		| 'predict-aborted'
 		| 'invalid-value'
 		| 'invalid-stake'
 		| 'predict-threw'
@@ -152,14 +166,16 @@ export interface BotOptions {
 	 * `[pool.min_outcome, pool.max_outcome]`. The `stake` is clamped to
 	 * `[pool.min_stake, pool.max_stake]`.
 	 *
-	 * The second argument is the slot's context (`{ slot, me, trepa }`).
+	 * The second argument is the slot's context (`{ slot, me, trepa, signal }`).
 	 * Use `ctx.trepa` to call any other API endpoint as this specific bot
-	 * — for example `ctx.trepa.users.statistics(ctx.me.id)`.
+	 * — for example `ctx.trepa.users.statistics(ctx.me.id)`. Shutdown does not
+	 * wait on `predict`: the SDK races it against `ctx.signal`. Optionally
+	 * pass `signal` into `fetch` or other APIs that support `AbortSignal`.
 	 *
-	 * Errors thrown by `predict` are caught: `onError` is called with the
-	 * thrown value and `onPoolSkipped` is fired with reason `'predict-threw'`.
-	 * The bot loop continues. You don't need to wrap `predict` in your own
-	 * try/catch unless you want to recover with a fallback value.
+	 * Errors thrown by `predict` are caught and logged; `onPoolSkipped`
+	 * runs with reason `'predict-threw'`. The bot loop continues. You don't
+	 * need to wrap `predict` in your own try/catch unless you want to recover
+	 * with a fallback value.
 	 */
 	predict: (
 		pool: OpenPool,
@@ -179,18 +195,19 @@ export interface BotOptions {
 	 *
 	 * On shutdown (whether via this signal, `SIGINT`/`SIGTERM`, or an
 	 * unhandled error), each bot's session is invalidated server-side via
-	 * `auth.logout()` before `bots.run` resolves. Logout failures are
-	 * routed through `onError` and never block the swarm from exiting.
+	 * `auth.logout()` before `bots.run` resolves. Logout failures are logged
+	 * (including via `onError` when you override error lines) and never block
+	 * the swarm from exiting.
 	 */
 	signal?: AbortSignal;
 	/**
-	 * Lifecycle callbacks. All optional. Return a string to have the bot
-	 * print it on the matching color-coded line — e.g. `[READY]: ...`,
-	 * `[PRED]: ...`, `[SKIP]: ...`, `[ERROR]: ...`. Return nothing (or run
-	 * your own `console.log` inside) to stay silent or hand-roll output.
+	 * Optional lifecycle hooks. Omit them (or return `undefined`) to use the
+	 * SDK's default lines for `[READY]`, `[PRED]`, `[SKIP]`, and `[ERROR]`.
+	 * Return a string to replace only that event's line. You can still use
+	 * `console.log` inside a hook for extra output.
 	 *
-	 * When the swarm has more than one bot, the SDK automatically prefixes
-	 * each returned string with `[i/N]` so you can tell the bots apart.
+	 * With more than one bot, the SDK prefixes lines with `[i/N]` for both
+	 * defaults and custom strings you return.
 	 */
 	onStart?: (ctx: BotContext) => string | void;
 	onPredicted?: (info: BotPredictionInfo) => string | void;
@@ -290,7 +307,7 @@ export class Bots {
 						try {
 							await client.logout();
 						} catch (err) {
-							emit('error', opts.onError?.(err));
+							emit('error', lineForError(opts, err, slot));
 						}
 					}
 				}),
@@ -351,8 +368,8 @@ const runOne = async (
 ): Promise<void> => {
 	const me = await client.auth.me();
 	const streakId = (await client.streaks.bitcoin()).id;
-	const publicCtx: BotContext = { slot, me, trepa: client };
-	emit('ready', options.onStart?.(publicCtx));
+	const publicCtx: BotContext = { slot, me, trepa: client, signal };
+	emit('ready', lineForReady(options, publicCtx, slot));
 
 	const ctx: MachineCtx = {
 		client,
@@ -390,10 +407,11 @@ const advance = async (state: BotState, ctx: MachineCtx): Promise<BotState> => {
 			ctx.seen.add(state.pool.id);
 			emit(
 				'skip',
-				ctx.options.onPoolSkipped?.({
-					pool: state.pool,
-					reason: 'started-mid-pool',
-				}),
+				lineForSkipped(
+					ctx.options,
+					{ pool: state.pool, reason: 'started-mid-pool' },
+					ctx.publicCtx.slot,
+				),
 			);
 			await sleepUntil(
 				state.pool.prediction_end_date,
@@ -427,7 +445,7 @@ const advance = async (state: BotState, ctx: MachineCtx): Promise<BotState> => {
 			return { kind: 'polling' };
 
 		case 'recovering_from_error':
-			emit('error', ctx.options.onError?.(state.err));
+			emit('error', lineForError(ctx.options, state.err, ctx.publicCtx.slot));
 			await sleep(ctx.pollIntervalMs, ctx.signal);
 			return { kind: 'polling' };
 
@@ -448,10 +466,11 @@ const classify = async (ctx: MachineCtx): Promise<BotState> => {
 	if (!pool || pool.is_closed) {
 		emit(
 			'skip',
-			ctx.options.onPoolSkipped?.({
-				pool: pool ?? null,
-				reason: 'no-open-pool',
-			}),
+			lineForSkipped(
+				ctx.options,
+				{ pool: pool ?? null, reason: 'no-open-pool' },
+				ctx.publicCtx.slot,
+			),
 		);
 		return { kind: 'no_open_pool' };
 	}
@@ -490,33 +509,77 @@ const tryPredict = async (
 	let decision: BotPredictDecision;
 
 	try {
-		decision = await options.predict(pool, ctx.publicCtx);
+		decision = await Promise.race([
+			options.predict(pool, ctx.publicCtx),
+			untilAborted(ctx.signal).then((): BotPredictDecision => null),
+		]);
 	} catch (err) {
-		emit('error', options.onError?.(err));
-		emit('skip', options.onPoolSkipped?.({ pool, reason: 'predict-threw' }));
+		emit('error', lineForError(options, err, ctx.publicCtx.slot));
+		emit(
+			'skip',
+			lineForSkipped(
+				options,
+				{ pool, reason: 'predict-threw' },
+				ctx.publicCtx.slot,
+			),
+		);
 		return;
+	}
+
+	if (ctx.signal.aborted) {
+		decision = null;
 	}
 
 	if (decision === null) {
 		emit(
 			'skip',
-			options.onPoolSkipped?.({ pool, reason: 'predict-returned-null' }),
+			lineForSkipped(
+				options,
+				{
+					pool,
+					reason: ctx.signal.aborted
+						? 'predict-aborted'
+						: 'predict-returned-null',
+				},
+				ctx.publicCtx.slot,
+			),
 		);
 		return;
 	}
 
 	if (!Number.isFinite(decision.value)) {
-		emit('skip', options.onPoolSkipped?.({ pool, reason: 'invalid-value' }));
+		emit(
+			'skip',
+			lineForSkipped(
+				options,
+				{ pool, reason: 'invalid-value' },
+				ctx.publicCtx.slot,
+			),
+		);
 		return;
 	}
 
 	if (!Number.isFinite(decision.stake)) {
-		emit('skip', options.onPoolSkipped?.({ pool, reason: 'invalid-stake' }));
+		emit(
+			'skip',
+			lineForSkipped(
+				options,
+				{ pool, reason: 'invalid-stake' },
+				ctx.publicCtx.slot,
+			),
+		);
 		return;
 	}
 
 	if (Date.now() >= deadlineMs) {
-		emit('skip', options.onPoolSkipped?.({ pool, reason: 'predict-too-late' }));
+		emit(
+			'skip',
+			lineForSkipped(
+				options,
+				{ pool, reason: 'predict-too-late' },
+				ctx.publicCtx.slot,
+			),
+		);
 		return;
 	}
 
@@ -525,11 +588,64 @@ const tryPredict = async (
 
 	try {
 		await ctx.client.predictions.create({ poolId: pool.id, stake, value });
-		emit('pred', options.onPredicted?.({ pool, value, stake }));
+		emit(
+			'pred',
+			lineForPredicted(options, { pool, value, stake }, ctx.publicCtx.slot),
+		);
 	} catch (err) {
-		emit('error', options.onError?.(err));
+		emit('error', lineForError(options, err, ctx.publicCtx.slot));
 	}
 };
+
+function prefixSlotLine(slot: BotSlot, line: string): string {
+	if (slot.count <= 1) return line;
+	return `[${slot.index + 1}/${slot.count}] ${line}`;
+}
+
+function lineForReady(
+	options: BotOptions,
+	ctx: BotContext,
+	slot: BotSlot,
+): string {
+	const custom = options.onStart?.(ctx);
+	if (custom !== undefined) return custom;
+	return prefixSlotLine(slot, `logged in as ${ctx.me.username}`);
+}
+
+function lineForPredicted(
+	options: BotOptions,
+	info: BotPredictionInfo,
+	slot: BotSlot,
+): string {
+	const custom = options.onPredicted?.(info);
+	if (custom !== undefined) return custom;
+	const { pool, value, stake } = info;
+	return prefixSlotLine(
+		slot,
+		`${pool.title} → ${formatNumber(value, pool.precision)} @ ${formatNumber(stake, 2)} USDC`,
+	);
+}
+
+function lineForSkipped(
+	options: BotOptions,
+	info: BotSkippedInfo,
+	slot: BotSlot,
+): string {
+	const custom = options.onPoolSkipped?.(info);
+	if (custom !== undefined) return custom;
+	const title = info.pool?.title ?? '(no pool)';
+	return prefixSlotLine(slot, `${title}: ${info.reason}`);
+}
+
+function lineForError(
+	options: BotOptions,
+	err: unknown,
+	slot: BotSlot,
+): string {
+	const custom = options.onError?.(err);
+	if (custom !== undefined) return custom;
+	return prefixSlotLine(slot, formatError(err));
+}
 
 const emit = (kind: EventKind, value: string | void): void => {
 	if (typeof value === 'string') writeEvent(kind, value);
@@ -544,6 +660,13 @@ function snap(value: number, pool: OpenPool): number {
 
 function clamp(value: number, min: number, max: number): number {
 	return Math.min(Math.max(value, min), max);
+}
+
+function untilAborted(signal: AbortSignal): Promise<void> {
+	if (signal.aborted) return Promise.resolve();
+	return new Promise<void>((resolve) => {
+		signal.addEventListener('abort', () => resolve(), { once: true });
+	});
 }
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {

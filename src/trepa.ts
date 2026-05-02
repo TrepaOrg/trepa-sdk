@@ -2,6 +2,10 @@ import { Bots, type BotCredentials } from './bot';
 import { TrepaClient } from './client';
 import { Session } from './session';
 
+const DEFAULT_SOLANA_RPC_URL = 'https://api.mainnet-beta.solana.com';
+const DEFAULT_SOLANA_RPC_SUBSCRIPTIONS_URL =
+	'wss://api.mainnet-beta.solana.com';
+
 /** Configuration for a `Trepa` client. */
 export interface TrepaConfig {
 	/**
@@ -13,6 +17,18 @@ export interface TrepaConfig {
 	credentials?: readonly BotCredentials[];
 	/** Override the API origin (defaults to production). */
 	baseUrl?: string;
+	/**
+	 * Solana JSON-RPC HTTPS endpoint (balance reads, sends). Used by tooling
+	 * such as the liquidity-bot master-wallet funder; defaults to public
+	 * mainnet-beta.
+	 */
+	solanaRpcUrl?: string;
+	/**
+	 * Solana JSON-RPC WebSocket endpoint for transaction subscriptions.
+	 * Never inferred from `solanaRpcUrl` — set both explicitly when you leave
+	 * mainnet. If omitted, defaults to public mainnet-beta WebSocket.
+	 */
+	solanaRpcSubscriptionsUrl?: string;
 }
 
 /**
@@ -40,6 +56,11 @@ export class Trepa extends TrepaClient {
 	/** Run one or more long-running predictor loops in parallel. */
 	readonly bots: Bots;
 
+	/** Resolved Solana HTTP RPC (see `TrepaConfig.solanaRpcUrl`). */
+	readonly solanaRpcUrl: string;
+	/** Resolved Solana WebSocket RPC for confirms / subscriptions. */
+	readonly solanaRpcSubscriptionsUrl: string;
+
 	constructor(config: TrepaConfig = {}) {
 		const credentials = config.credentials ?? [];
 		const primary = credentials[0];
@@ -49,6 +70,9 @@ export class Trepa extends TrepaClient {
 			baseUrl: config.baseUrl,
 		});
 		super(session);
+		this.solanaRpcUrl = config.solanaRpcUrl ?? DEFAULT_SOLANA_RPC_URL;
+		this.solanaRpcSubscriptionsUrl =
+			config.solanaRpcSubscriptionsUrl ?? DEFAULT_SOLANA_RPC_SUBSCRIPTIONS_URL;
 		this.bots = new Bots(credentials, {
 			baseUrl: config.baseUrl,
 		});
