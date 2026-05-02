@@ -1,0 +1,15 @@
+# Export swarm credentials (see .env.example), then:
+#   docker compose up --build
+
+services:
+  bot:
+    build: .
+    environment:
+      TREPA_MASTER_PRIVATE_KEY:
+      TREPA_API_KEY_1:
+      TREPA_PRIVATE_KEY_1:
+      TREPA_API_KEY_2:
+      TREPA_PRIVATE_KEY_2:
+      TREPA_API_KEY_3:
+      TREPA_PRIVATE_KEY_3:
+    restart: unless-stopped

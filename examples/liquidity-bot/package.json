@@ -2,7 +2,7 @@
   "name": "@trepa/example-liquidity-bot",
   "type": "module",
   "scripts": {
-    "start": "node --env-file=.env bot.strategy.ts"
+    "start": "node bot.strategy.ts"
   },
   "engines": {
     "node": ">=22.12.0"
@@ -10,7 +10,7 @@
   "dependencies": {
     "@solana-program/token": "^0.13.0",
     "@solana/kit": "^6.8.0",
-    "@trepa/sdk": "file:../.."
+    "@trepa/sdk": "latest"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

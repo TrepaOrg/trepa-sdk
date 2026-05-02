@@ -1,0 +1,10 @@
+# Export TREPA_API_KEY and TREPA_PRIVATE_KEY (or set them in CI), then:
+#   docker compose up --build
+
+services:
+  bot:
+    build: .
+    environment:
+      TREPA_API_KEY:
+      TREPA_PRIVATE_KEY:
+    restart: unless-stopped

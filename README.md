@@ -64,6 +64,9 @@ Full guides at **[docs.trepa.io/developers](https://docs.trepa.io/developers/int
 
 ## Examples
 
+Deployable sample bots (`Dockerfile`, `docker-compose.yml`, `@trepa/sdk@latest`
+from npm):
+
 - [`examples/spot-bot`](./examples/spot-bot): one credential, live BTC spot at
   min stake. Start here.
 - [`examples/liquidity-bot`](./examples/liquidity-bot): swarm + Gaussian ladder
