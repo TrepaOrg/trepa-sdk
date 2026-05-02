@@ -6,6 +6,14 @@ const DEFAULT_SOLANA_RPC_URL = 'https://api.mainnet-beta.solana.com';
 const DEFAULT_SOLANA_RPC_SUBSCRIPTIONS_URL =
 	'wss://api.mainnet-beta.solana.com';
 
+const trepaProcessEnv = (): Record<string, string | undefined> =>
+	typeof process !== 'undefined' && process.env ? process.env : {};
+
+function envUrl(value: string | undefined): string | undefined {
+	if (value === undefined || value === '') return undefined;
+	return value;
+}
+
 /** Configuration for a `Trepa` client. */
 export interface TrepaConfig {
 	/**
@@ -62,19 +70,26 @@ export class Trepa extends TrepaClient {
 	readonly solanaRpcSubscriptionsUrl: string;
 
 	constructor(config: TrepaConfig = {}) {
+		const env = trepaProcessEnv();
+		const baseUrl = config.baseUrl ?? envUrl(env.TREPA_BASE_URL);
 		const credentials = config.credentials ?? [];
 		const primary = credentials[0];
 		const session = new Session({
 			apiKey: primary?.apiKey,
 			privateKey: primary?.privateKey,
-			baseUrl: config.baseUrl,
+			baseUrl,
 		});
 		super(session);
-		this.solanaRpcUrl = config.solanaRpcUrl ?? DEFAULT_SOLANA_RPC_URL;
+		this.solanaRpcUrl =
+			config.solanaRpcUrl ??
+			envUrl(env.TREPA_SOLANA_RPC_URL) ??
+			DEFAULT_SOLANA_RPC_URL;
 		this.solanaRpcSubscriptionsUrl =
-			config.solanaRpcSubscriptionsUrl ?? DEFAULT_SOLANA_RPC_SUBSCRIPTIONS_URL;
+			config.solanaRpcSubscriptionsUrl ??
+			envUrl(env.TREPA_SOLANA_RPC_SUBSCRIPTIONS_URL) ??
+			DEFAULT_SOLANA_RPC_SUBSCRIPTIONS_URL;
 		this.bots = new Bots(credentials, {
-			baseUrl: config.baseUrl,
+			baseUrl,
 		});
 	}
 }
