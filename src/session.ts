@@ -119,10 +119,12 @@ export class Session {
 		}
 
 		if (result.error !== undefined || !result.response.ok) {
+			const resolved = await resolveErrorBody(result.response, result.error);
 			throw errorFromResponse(
 				result.response,
-				result.error ?? (await safeReadBody(result.response)),
+				resolved.payload,
 				fallbackMessage,
+				resolved.unparsedText,
 			);
 		}
 		return result.data as T;
@@ -141,10 +143,12 @@ export class Session {
 	async refresh(): Promise<void> {
 		const { error, response } = await this.client.POST('/auth/refresh');
 		if (!response.ok) {
+			const resolved = await resolveErrorBody(response, error);
 			throw errorFromResponse(
 				response,
-				error ?? (await safeReadBody(response)),
+				resolved.payload,
 				'Failed to refresh Trepa session',
+				resolved.unparsedText,
 			);
 		}
 	}
@@ -196,27 +200,47 @@ export class Session {
 			headers: { 'trepa-api-key': apiKey },
 		});
 		if (!response.ok) {
+			const resolved = await resolveErrorBody(response, error);
 			throw errorFromResponse(
 				response,
-				error ?? (await safeReadBody(response)),
+				resolved.payload,
 				'Failed to start Trepa session',
+				resolved.unparsedText,
 			);
 		}
 	}
 }
 
-const safeReadBody = async (response: Response): Promise<unknown> => {
+type JsonBody = { kind: 'json'; value: unknown };
+type TextBody = { kind: 'text'; value: string };
+
+const readBodyAfterJsonParse = async (
+	response: Response,
+): Promise<JsonBody | TextBody | undefined> => {
 	if (response.bodyUsed) return undefined;
 	try {
 		const cloned = response.clone();
 		const text = await cloned.text();
 		if (!text) return undefined;
 		try {
-			return JSON.parse(text) as unknown;
+			return { kind: 'json', value: JSON.parse(text) as unknown };
 		} catch {
-			return text;
+			return { kind: 'text', value: text };
 		}
 	} catch {
 		return undefined;
 	}
+};
+
+const resolveErrorBody = async (
+	response: Response,
+	openapiError: unknown | undefined,
+): Promise<{ payload: unknown; unparsedText: boolean }> => {
+	if (openapiError !== undefined) {
+		return { payload: openapiError, unparsedText: false };
+	}
+	const read = await readBodyAfterJsonParse(response);
+	if (read === undefined) return { payload: undefined, unparsedText: false };
+	if (read.kind === 'json') return { payload: read.value, unparsedText: false };
+	return { payload: read.value, unparsedText: true };
 };

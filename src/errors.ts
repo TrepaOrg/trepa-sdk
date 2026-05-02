@@ -62,19 +62,23 @@ const codeFromBody = (body: unknown): string | undefined => {
 	return typeof shape.error === 'string' ? shape.error : undefined;
 };
 
+/**
+ * Builds a `TrepaError` from a failed HTTP response.
+ *
+ * @param unparsedTextBody — Response body was not valid JSON (e.g. HTML).
+ *   Use the HTTP status line as the message instead of embedding raw text.
+ */
 export const errorFromResponse = (
 	response: Response,
 	body: unknown,
 	fallback: string,
-): TrepaError =>
-	new TrepaError(
-		messageFromBody(
-			body,
-			`${fallback}: ${response.status} ${response.statusText}`.trim(),
-		),
-		{
-			status: response.status,
-			code: codeFromBody(body),
-			body,
-		},
-	);
+	unparsedTextBody = false,
+): TrepaError => {
+	const baseFallback = `${fallback}: ${response.status} ${response.statusText}`.trim();
+	const message = unparsedTextBody ? baseFallback : messageFromBody(body, baseFallback);
+	return new TrepaError(message, {
+		status: response.status,
+		code: codeFromBody(body),
+		body,
+	});
+};
