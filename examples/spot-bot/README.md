@@ -1,7 +1,6 @@
 # spot-bot
 
-The smallest possible Trepa bot: one credential, predicts the current BTC spot
-price (from Binance) for every open Bitcoin pool at **min stake**.
+One bot submitting the current BTC spot price (from Binance) for every open Bitcoin pool.
 
 **Requires Docker** (and Docker Compose) to run as documented below. [Install Docker](https://docs.docker.com/get-docker/).
 
