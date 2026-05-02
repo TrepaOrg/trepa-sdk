@@ -4,12 +4,7 @@ A bot swarm that quotes a volatility-sized ladder around BTC spot. Three credent
 
 ## Run
 
-This example links to the local SDK (`@trepa/sdk: file:../..`), so build the SDK once at the repo root before installing here.
-
 ```bash
-# from the trepa-sdk repo root, once
-pnpm install && pnpm build
-
 # in this directory, copy the env template and fill in your three credentials
 cp .env.example .env
 $EDITOR .env

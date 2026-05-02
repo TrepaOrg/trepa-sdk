@@ -4,12 +4,7 @@ The smallest possible Trepa bot: one credential, predicts the current BTC spot p
 
 ## Run
 
-This example links to the local SDK (`@trepa/sdk: file:../..`), so build the SDK once at the repo root before installing here.
-
 ```bash
-# from the trepa-sdk repo root, once
-pnpm install && pnpm build
-
 # in this directory, copy the env template and fill in your credentials
 cp .env.example .env
 $EDITOR .env
