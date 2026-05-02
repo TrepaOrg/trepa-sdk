@@ -6,6 +6,8 @@ import {
 	type EventKind,
 	formatError,
 	formatNumber,
+	logBotSwarmShutdown,
+	logBotSwarmStartup,
 	writeEvent,
 } from './format';
 import { Session, type SessionConfig } from './session';
@@ -288,6 +290,12 @@ export class Bots {
 			);
 		}
 
+		ensureTrepaEnvLoaded();
+		logBotSwarmStartup({
+			credentialCount: count,
+			apiBaseUrl: this.sessionDefaults.baseUrl,
+		});
+
 		const factory: (slot: BotSlot) => BotOptions =
 			typeof strategy === 'function' ? strategy : () => strategy;
 
@@ -322,6 +330,7 @@ export class Bots {
 			);
 		} finally {
 			for (const sig of SHUTDOWN_SIGNALS) proc?.off(sig, handler);
+			logBotSwarmShutdown();
 		}
 	}
 }
@@ -374,10 +383,12 @@ const runOne = async (
 	options: BotOptions,
 	signal: AbortSignal,
 ): Promise<void> => {
+	const authStarted = Date.now();
 	const me = await client.auth.me();
 	const streakId = (await client.streaks.bitcoin()).id;
+	const authMs = Date.now() - authStarted;
 	const publicCtx: BotContext = { slot, me, trepa: client, signal };
-	emit('ready', lineForReady(options, publicCtx, slot));
+	emit('ready', lineForReady(options, publicCtx, slot, authMs));
 
 	const ctx: MachineCtx = {
 		client,
@@ -614,10 +625,14 @@ function lineForReady(
 	options: BotOptions,
 	ctx: BotContext,
 	slot: BotSlot,
+	authMs: number,
 ): string {
 	const custom = options.onStart?.(ctx);
 	if (custom !== undefined) return custom;
-	return prefixSlotLine(slot, `logged in as ${ctx.me.username}`);
+	return prefixSlotLine(
+		slot,
+		`Ready — logged in as ${ctx.me.username} (${authMs}ms)`,
+	);
 }
 
 function lineForPredicted(
@@ -630,9 +645,20 @@ function lineForPredicted(
 	const { pool, value, stake } = info;
 	return prefixSlotLine(
 		slot,
-		`${pool.title} → ${formatNumber(value, pool.precision)} @ ${formatNumber(stake, 2)} USDC`,
+		`Submitted ${pool.title} → ${formatNumber(value, pool.precision)} @ ${formatNumber(stake, 2)} USDC`,
 	);
 }
+
+const SKIP_REASON_LABEL: Record<BotSkippedInfo['reason'], string> = {
+	'no-open-pool': 'no open pool',
+	'started-mid-pool': 'started mid-window (waiting for next pool)',
+	'predict-returned-null': 'strategy returned skip',
+	'predict-aborted': 'predict aborted (shutdown)',
+	'invalid-value': 'invalid value (not finite)',
+	'invalid-stake': 'invalid stake (not finite)',
+	'predict-threw': 'strategy threw',
+	'predict-too-late': 'past submission deadline',
+};
 
 function lineForSkipped(
 	options: BotOptions,
@@ -642,7 +668,8 @@ function lineForSkipped(
 	const custom = options.onPoolSkipped?.(info);
 	if (custom !== undefined) return custom;
 	const title = info.pool?.title ?? '(no pool)';
-	return prefixSlotLine(slot, `${title}: ${info.reason}`);
+	const why = SKIP_REASON_LABEL[info.reason];
+	return prefixSlotLine(slot, `${title} — ${why}`);
 }
 
 function lineForError(

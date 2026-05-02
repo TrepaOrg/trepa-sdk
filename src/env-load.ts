@@ -3,6 +3,23 @@ import { loadEnvFile } from 'node:process';
 
 let loaded = false;
 
+/** Paths of env files successfully merged into `process.env` (see {@link ensureTrepaEnvLoaded}). */
+export interface TrepaEnvLoadSummary {
+	readonly loadedFiles: readonly string[];
+}
+
+const emptySummary: TrepaEnvLoadSummary = Object.freeze({ loadedFiles: [] });
+
+let loadSummary: TrepaEnvLoadSummary = emptySummary;
+
+/**
+ * Snapshot from the last {@link ensureTrepaEnvLoaded} run. Before the first
+ * load, `loadedFiles` is empty.
+ */
+export function getTrepaEnvLoadSummary(): TrepaEnvLoadSummary {
+	return loadSummary;
+}
+
 /**
  * Merge Trepa env files into `process.env` once (Node only).
  *
@@ -23,12 +40,17 @@ export function ensureTrepaEnvLoaded(): void {
 	if (extra) paths.push(extra);
 	paths.push('.env.local', '.env');
 
+	const loadedFiles: string[] = [];
+
 	for (const filePath of paths) {
 		if (!filePath || !existsSync(filePath)) continue;
 		try {
 			loadEnvFile(filePath);
+			loadedFiles.push(filePath);
 		} catch {
 			/* unreadable or invalid — ignore */
 		}
 	}
+
+	loadSummary = Object.freeze({ loadedFiles: [...loadedFiles] });
 }

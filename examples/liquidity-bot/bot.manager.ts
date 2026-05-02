@@ -24,22 +24,14 @@ import {
 	getCreateAssociatedTokenIdempotentInstructionAsync,
 	getTransferCheckedInstruction,
 } from '@solana-program/token';
-import { type BotCredentials, Trepa } from '@trepa/sdk';
+import { type BotCredentials, trepaLog, Trepa } from '@trepa/sdk';
 
 const USDC_TARGET = 30;
 const USDC_THRESHOLD = 25;
 const FUND_INTERVAL_MS = 60_000;
 const FUNDER_SHUTDOWN_WAIT_MS = 15_000;
 
-const ANSI_GREEN = '\x1b[92m';
-const ANSI_RESET = '\x1b[0m';
-const useColor =
-	typeof process !== 'undefined' && process.stdout?.isTTY === true;
-const logTag = useColor ? `${ANSI_GREEN}[FUND]${ANSI_RESET}` : '[FUND]';
-
-const log = (msg: string): void => {
-	console.log(`${logTag}: ${msg}`);
-};
+const fundLog = trepaLog.withTag('fund');
 
 interface BotWallet {
 	address: Address;
@@ -57,17 +49,6 @@ interface FunderCtx {
 	thresholdUnits: bigint;
 }
 
-/**
- * Run `main()` (usually `trepa.bots.run(...)`) alongside a master-wallet
- * USDC top-up loop when `TREPA_MASTER_PRIVATE_KEY` is set. Pass the same
- * `credentials` array you gave `new Trepa({ credentials })`.
- *
- * ```ts
- * const credentials = credentialsFromEnv()
- * const trepa = new Trepa({ credentials })
- * await withManager(trepa, credentials, () => trepa.bots.run(strategy))
- * ```
- */
 export const withManager = async (
 	trepa: Trepa,
 	credentials: readonly BotCredentials[],
@@ -108,13 +89,13 @@ async function runFunderLoop(
 	try {
 		bootstrap = await bootstrapFunder(trepa, credentials, masterPrivateKey);
 	} catch (err) {
-		log(`bootstrap failed — ${describeError(err)}`);
+		fundLog.error(`bootstrap failed — ${describeError(err)}`);
 		return;
 	}
 
 	const { ctx, bots } = bootstrap;
 
-	log(
+	fundLog.ready(
 		`master ${shortAddr(ctx.master.address)} watching ${bots.length} ` +
 			`bot${bots.length === 1 ? '' : 's'} ` +
 			`(USDC target ${USDC_TARGET}, threshold ${USDC_THRESHOLD})`,
@@ -126,7 +107,7 @@ async function runFunderLoop(
 			try {
 				await topUpBotIfNeeded(ctx, bot);
 			} catch (err) {
-				log(`${bot.label}: top-up failed — ${describeError(err)}`);
+				fundLog.error(`${bot.label}: top-up failed — ${describeError(err)}`);
 			}
 		}
 		await sleep(FUND_INTERVAL_MS, signal);
@@ -165,7 +146,7 @@ async function bootstrapFunder(
 
 	const masterToken = await fetchMaybeToken(rpc, masterAta);
 	if (!masterToken.exists) {
-		log(
+		fundLog.warn(
 			`master has no USDC token account for mint ${shortAddr(mint)} on ` +
 				`${trepa.solanaRpcUrl} — fund the master wallet on this cluster or ` +
 				`set TrepaConfig.solanaRpcUrl to match where the mint lives.`,
@@ -266,7 +247,7 @@ async function topUpBotIfNeeded(ctx: FunderCtx, bot: BotWallet): Promise<void> {
 	assertIsTransactionWithBlockhashLifetime(signed);
 	await ctx.sendAndConfirm(signed, { commitment: 'confirmed' });
 
-	log(`${bot.label}: ${movements.join(', ')}`);
+	fundLog.success(`${bot.label}: ${movements.join(', ')}`);
 }
 
 async function createSignerFromBase58(

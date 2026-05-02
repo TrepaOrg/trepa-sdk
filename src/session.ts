@@ -3,7 +3,8 @@ import createClient, { type Client, type Middleware } from 'openapi-fetch';
 import type { paths } from './api/schema';
 import { TrepaError, errorFromResponse } from './errors';
 
-const DEFAULT_BASE_URL = 'https://www.api.trepa.app';
+/** REST API origin used when {@link SessionConfig.baseUrl} is omitted. */
+export const DEFAULT_TREPA_API_BASE_URL = 'https://www.api.trepa.app';
 
 const AUTH_COOKIE = 'trepa-token';
 const REFRESH_COOKIE = 'trepa-refresh';
@@ -76,7 +77,7 @@ export class Session {
 	constructor(config: SessionConfig = {}) {
 		this.apiKey = config.apiKey;
 		this.privateKey = config.privateKey;
-		this.baseUrl = config.baseUrl ?? DEFAULT_BASE_URL;
+		this.baseUrl = config.baseUrl ?? DEFAULT_TREPA_API_BASE_URL;
 
 		this.client = createClient<paths>({
 			baseUrl: this.baseUrl,

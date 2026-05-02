@@ -1,4 +1,8 @@
-export { ensureTrepaEnvLoaded } from './env-load';
+export {
+	ensureTrepaEnvLoaded,
+	getTrepaEnvLoadSummary,
+	type TrepaEnvLoadSummary,
+} from './env-load';
 export { Trepa, type TrepaConfig } from './trepa';
 export { TrepaClient } from './client';
 export { TrepaError, isTrepaError } from './errors';
@@ -20,5 +24,8 @@ export {
 	writeEvent,
 	formatNumber,
 	formatError,
+	logBotSwarmStartup,
+	logBotSwarmShutdown,
 	type EventKind,
 } from './format';
+export { SDK_DOCS_URL, SDK_VERSION } from './version';
