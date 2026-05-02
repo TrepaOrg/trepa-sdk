@@ -1,7 +1,3 @@
-/**
- * Bot-loop logging via consola — compact dev-server style (Next.js-inspired).
- */
-
 import { createConsola } from 'consola';
 
 import { getTrepaEnvLoadSummary } from './env-load';
