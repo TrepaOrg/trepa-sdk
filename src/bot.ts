@@ -232,12 +232,14 @@ const SHUTDOWN_SIGNALS = ['SIGINT', 'SIGTERM'] as const;
  * })
  *
  * await trepa.bots.run(({ index, count }) => ({
- *   predict: (pool, { trepa, me }) => ({
- *     value:
- *       pool.min_outcome +
- *       ((index + 0.5) / count) * (pool.max_outcome - pool.min_outcome),
- *     stake: pool.min_stake,
- *   }),
+ *   predict: (pool) => {
+ *     const fair = 96_000
+ *     const spacing = 400
+ *     return {
+ *       value: fair + (index - (count - 1) / 2) * spacing,
+ *       stake: pool.min_stake,
+ *     }
+ *   },
  * }))
  * ```
  */
