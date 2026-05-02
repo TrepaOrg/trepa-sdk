@@ -56,17 +56,6 @@ await trepa.bots.run({
 });
 ```
 
-Run it with Node's built-in env loader:
-
-```bash
-node --env-file=.env bot.ts
-```
-
-`bots.run` calls your `predict` once per open Bitcoin pool, signs and submits the prediction, then polls for the next pool.
-
-For a swarm, set `TREPA_API_KEY_1` / `TREPA_PRIVATE_KEY_1`,
-`_2`, `_3`, … and `credentialsFromEnv()` returns every consecutive pair.
-
 Full guides at **[docs.trepa.io/developers](https://docs.trepa.io/developers/introduction)**:
 
 - [Quickstart](https://docs.trepa.io/developers/quickstart): a real BTC-spot bot in five minutes.
