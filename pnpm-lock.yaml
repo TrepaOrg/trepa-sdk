@@ -15,7 +15,7 @@ importers:
         specifier: ^3.4.2
         version: 3.4.2
       openapi-fetch:
-        specifier: ^0.17.0
+        specifier: 0.17.0
         version: 0.17.0
     devDependencies:
       '@types/node':
@@ -40,7 +40,7 @@ importers:
         specifier: 5.5.5
         version: 5.5.5(eslint-config-prettier@10.1.8(eslint@9.39.4))(eslint@9.39.4)(prettier@3.8.3)
       openapi-typescript:
-        specifier: ^7.13.0
+        specifier: 7.13.0
         version: 7.13.0(typescript@6.0.3)
       prettier:
         specifier: ^3.8.3
