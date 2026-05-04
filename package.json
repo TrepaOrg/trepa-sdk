@@ -58,11 +58,11 @@
   },
   "dependencies": {
     "@solana/kit": "6.8.0",
-    "consola": "^3.4.2",
+    "consola": "3.4.2",
     "openapi-fetch": "0.17.0"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
+    "@types/node": "22.19.17",
     "@typescript-eslint/eslint-plugin": "8.59.1",
     "@typescript-eslint/parser": "8.59.1",
     "eslint": "9.39.4",
@@ -70,9 +70,9 @@
     "eslint-plugin-import": "2.32.0",
     "eslint-plugin-prettier": "5.5.5",
     "openapi-typescript": "7.13.0",
-    "prettier": "^3.8.3",
-    "tsup": "^8.5.1",
-    "typescript": "^6.0.0"
+    "prettier": "3.8.3",
+    "tsup": "8.5.1",
+    "typescript": "6.0.3"
   },
   "publishConfig": {
     "access": "public"
