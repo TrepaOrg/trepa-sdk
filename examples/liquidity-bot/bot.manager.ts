@@ -26,8 +26,8 @@ import {
 } from '@solana-program/token';
 import { type BotCredentials, trepaLog, Trepa } from '@trepa/sdk';
 
-const USDC_TARGET = 30;
-const USDC_THRESHOLD = 25;
+const USDC_TARGET = 5;
+const USDC_THRESHOLD = 2;
 const FUND_INTERVAL_MS = 60_000;
 const FUNDER_SHUTDOWN_WAIT_MS = 15_000;
 
