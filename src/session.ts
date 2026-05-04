@@ -4,7 +4,7 @@ import type { paths } from './api/schema';
 import { TrepaError, errorFromResponse } from './errors';
 
 /** REST API origin used when {@link SessionConfig.baseUrl} is omitted. */
-export const DEFAULT_TREPA_API_BASE_URL = 'https://www.api.trepa.app';
+export const DEFAULT_TREPA_API_BASE_URL = 'https://api.trepa.app';
 
 const AUTH_COOKIE = 'trepa-token';
 const REFRESH_COOKIE = 'trepa-refresh';
