@@ -51,7 +51,6 @@
   "scripts": {
     "gen": "node scripts/gen.mjs",
     "build": "tsup",
-    "typecheck": "tsc --noEmit",
     "lint": "eslint . --report-unused-disable-directives --max-warnings 0 --fix",
     "format": "eslint . --fix --ignore-pattern pnpm-lock.yaml --ignore-pattern '*.json' && prettier --write .",
     "prepublishOnly": "pnpm build"

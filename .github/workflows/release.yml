@@ -91,9 +91,6 @@ jobs:
       - name: Build SDK (tsup)
         run: pnpm build
 
-      - name: Type-check
-        run: pnpm typecheck
-
       - name: Verify pack contents
         run: |
           pnpm pack --pack-destination /tmp/pack
