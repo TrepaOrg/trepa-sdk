@@ -27,13 +27,21 @@ import {
 import { type BotCredentials, trepaLog, Trepa } from '@trepa/sdk';
 
 const USDC_TARGET = 5;
-const USDC_THRESHOLD = 2;
+const USDC_THRESHOLD = 3;
 const FUND_INTERVAL_MS = 60_000;
 const FUNDER_SHUTDOWN_WAIT_MS = 15_000;
+const REBALANCE_ENABLED = true;
+const REBALANCE_INTERVAL_MS = FUND_INTERVAL_MS;
+const REBALANCE_MAX_TRANSFER = 2;
+const REBALANCE_DONOR_RESERVE = 2;
+const REBALANCE_MIN_PNL_GAP = 0;
 
 interface BotWallet {
 	address: Address;
 	label: string;
+	signer: KeyPairSigner<string>;
+	client: Trepa;
+	userId: string;
 }
 
 interface FunderCtx {
@@ -45,6 +53,17 @@ interface FunderCtx {
 	decimals: number;
 	targetUnits: bigint;
 	thresholdUnits: bigint;
+	rebalanceCapUnits: bigint;
+	rebalanceDonorReserveUnits: bigint;
+	rebalanceMinPnlGap: number;
+}
+
+interface BotSnapshot {
+	bot: BotWallet;
+	ata: Address;
+	hasAta: boolean;
+	balance: bigint;
+	pnl: number;
 }
 
 export const withManager = async (
@@ -98,8 +117,29 @@ async function runFunderLoop(
 			`bot${bots.length === 1 ? '' : 's'} ` +
 			`(USDC target ${USDC_TARGET}, threshold ${USDC_THRESHOLD})`,
 	);
+	if (REBALANCE_ENABLED) {
+		trepaLog.info(
+			'rebalance enabled ' +
+				`(every ${Math.round(REBALANCE_INTERVAL_MS / 1_000)}s, ` +
+				`max transfer ${REBALANCE_MAX_TRANSFER} USDC, ` +
+				`donor reserve ${REBALANCE_DONOR_RESERVE} USDC, ` +
+				`min pnl gap ${REBALANCE_MIN_PNL_GAP})`,
+		);
+	}
+
+	let nextRebalanceAt = 0;
 
 	while (!signal.aborted) {
+		if (REBALANCE_ENABLED && Date.now() >= nextRebalanceAt) {
+			try {
+				await rebalanceBotsIfNeeded(ctx, bots, signal);
+			} catch (err) {
+				trepaLog.error(`rebalance failed — ${describeError(err)}`);
+			} finally {
+				nextRebalanceAt = Date.now() + REBALANCE_INTERVAL_MS;
+			}
+		}
+
 		for (const bot of bots) {
 			if (signal.aborted) return;
 			try {
@@ -121,6 +161,15 @@ async function bootstrapFunder(
 		createSignerFromBase58(masterPrivateKey),
 		...credentials.map((c) => createSignerFromBase58(c.privateKey)),
 	]);
+	const botClients = credentials.map(
+		(c) =>
+			new Trepa({
+				credentials: [c],
+				solanaRpcUrl: trepa.solanaRpcUrl,
+				solanaRpcSubscriptionsUrl: trepa.solanaRpcSubscriptionsUrl,
+			}),
+	);
+	const botUsers = await Promise.all(botClients.map((client) => client.me()));
 
 	const { mint, decimals } = await fetchStakeMint(trepa);
 
@@ -135,6 +184,11 @@ async function bootstrapFunder(
 
 	const targetUnits = toBaseUnits(USDC_TARGET, decimals);
 	const thresholdUnits = toBaseUnits(USDC_THRESHOLD, decimals);
+	const rebalanceCapUnits = toBaseUnits(REBALANCE_MAX_TRANSFER, decimals);
+	const rebalanceDonorReserveUnits = toBaseUnits(
+		REBALANCE_DONOR_RESERVE,
+		decimals,
+	);
 
 	const [masterAta] = await findAssociatedTokenPda({
 		mint,
@@ -151,11 +205,17 @@ async function bootstrapFunder(
 		);
 	}
 
-	const bots: BotWallet[] = botSigners.map((s, i) => ({
-		address: s.address,
-		label:
-			credentials.length > 1 ? `bot ${i + 1}/${credentials.length}` : 'bot',
-	}));
+	const bots: BotWallet[] = botSigners.map((s, i) => {
+		const user = botUsers[i];
+		return {
+			address: s.address,
+			label:
+				credentials.length > 1 ? `bot ${i + 1}/${credentials.length}` : 'bot',
+			signer: s,
+			client: botClients[i],
+			userId: user.id,
+		};
+	});
 
 	return {
 		ctx: {
@@ -167,6 +227,9 @@ async function bootstrapFunder(
 			decimals,
 			targetUnits,
 			thresholdUnits,
+			rebalanceCapUnits,
+			rebalanceDonorReserveUnits,
+			rebalanceMinPnlGap: REBALANCE_MIN_PNL_GAP,
 		},
 		bots,
 	};
@@ -248,6 +311,130 @@ async function topUpBotIfNeeded(ctx: FunderCtx, bot: BotWallet): Promise<void> {
 	trepaLog.success(`${bot.label}: ${movements.join(', ')}`);
 }
 
+async function rebalanceBotsIfNeeded(
+	ctx: FunderCtx,
+	bots: readonly BotWallet[],
+	signal: AbortSignal,
+): Promise<void> {
+	if (bots.length < 2) return;
+
+	const snapshots = await Promise.all(
+		bots.map((bot) => loadBotSnapshot(ctx, bot, signal)),
+	);
+	const donors = snapshots
+		.filter((s) => s.balance > ctx.targetUnits + ctx.rebalanceDonorReserveUnits)
+		.sort((a, b) => b.pnl - a.pnl);
+	const receivers = snapshots
+		.filter((s) => s.balance < ctx.thresholdUnits)
+		.sort((a, b) => a.pnl - b.pnl);
+
+	if (donors.length === 0 || receivers.length === 0) return;
+
+	for (const receiver of receivers) {
+		if (signal.aborted) return;
+		let deficit = ctx.targetUnits - receiver.balance;
+		if (deficit <= 0n) continue;
+
+		for (const donor of donors) {
+			if (signal.aborted || deficit <= 0n) break;
+			if (donor.bot.address === receiver.bot.address) continue;
+			if (donor.pnl - receiver.pnl < ctx.rebalanceMinPnlGap) continue;
+
+			const minDonorBalance = ctx.targetUnits + ctx.rebalanceDonorReserveUnits;
+			const donorSlack = donor.balance - minDonorBalance;
+			if (donorSlack <= 0n) continue;
+
+			const amount = minBigInt(deficit, donorSlack, ctx.rebalanceCapUnits);
+			if (amount <= 0n) continue;
+
+			await transferBetweenBots(ctx, donor.bot, receiver.bot, receiver, amount);
+			donor.balance -= amount;
+			receiver.balance += amount;
+			deficit -= amount;
+		}
+	}
+}
+
+async function loadBotSnapshot(
+	ctx: FunderCtx,
+	bot: BotWallet,
+	signal: AbortSignal,
+): Promise<BotSnapshot> {
+	const [ata] = await findAssociatedTokenPda({
+		mint: ctx.mint,
+		owner: bot.address,
+		tokenProgram: TOKEN_PROGRAM_ADDRESS,
+	});
+	const [tokenAccount, stats] = await Promise.all([
+		fetchMaybeToken(ctx.rpc, ata),
+		bot.client.users.statistics(bot.userId),
+	]);
+	if (signal.aborted) {
+		throw new Error('aborted while loading bot snapshot');
+	}
+	return {
+		bot,
+		ata,
+		hasAta: tokenAccount.exists,
+		balance: tokenAccount.exists ? tokenAccount.data.amount : 0n,
+		pnl: Number.isFinite(stats.pnl) ? stats.pnl : 0,
+	};
+}
+
+async function transferBetweenBots(
+	ctx: FunderCtx,
+	donor: BotWallet,
+	receiver: BotWallet,
+	receiverSnapshot: BotSnapshot,
+	amount: bigint,
+): Promise<void> {
+	const [donorAta] = await findAssociatedTokenPda({
+		mint: ctx.mint,
+		owner: donor.address,
+		tokenProgram: TOKEN_PROGRAM_ADDRESS,
+	});
+	const instructions: Instruction[] = [];
+
+	if (!receiverSnapshot.hasAta) {
+		instructions.push(
+			await getCreateAssociatedTokenIdempotentInstructionAsync({
+				payer: ctx.master,
+				owner: receiver.address,
+				mint: ctx.mint,
+			}),
+		);
+		receiverSnapshot.hasAta = true;
+	}
+
+	instructions.push(
+		getTransferCheckedInstruction({
+			source: donorAta,
+			mint: ctx.mint,
+			destination: receiverSnapshot.ata,
+			authority: donor.signer,
+			amount,
+			decimals: ctx.decimals,
+		}),
+	);
+
+	const { value: latestBlockhash } = await ctx.rpc.getLatestBlockhash().send();
+	const message = pipe(
+		createTransactionMessage({ version: 0 }),
+		(tx) => setTransactionMessageFeePayerSigner(ctx.master, tx),
+		(tx) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, tx),
+		(tx) => appendTransactionMessageInstructions(instructions, tx),
+	);
+	const signed = await signTransactionMessageWithSigners(message);
+	assertIsTransactionWithinSizeLimit(signed);
+	assertIsTransactionWithBlockhashLifetime(signed);
+	await ctx.sendAndConfirm(signed, { commitment: 'confirmed' });
+
+	trepaLog.success(
+		`rebalance ${donor.label} -> ${receiver.label}: ` +
+			`${formatBaseUnits(amount, ctx.decimals)} USDC`,
+	);
+}
+
 async function createSignerFromBase58(
 	privateKeyBase58: string,
 ): Promise<KeyPairSigner<string>> {
@@ -279,6 +466,10 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 			{ once: true },
 		);
 	});
+}
+
+function minBigInt(a: bigint, b: bigint, c: bigint): bigint {
+	return a < b ? (a < c ? a : c) : b < c ? b : c;
 }
 
 function toBaseUnits(amount: number, decimals: number): bigint {
