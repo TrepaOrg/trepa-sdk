@@ -39,6 +39,13 @@ export interface TrepaConfig {
 	 * mainnet. If omitted, defaults to public mainnet-beta WebSocket.
 	 */
 	solanaRpcSubscriptionsUrl?: string;
+	/**
+	 * Milliseconds multiplied by each bot’s index before its first API call.
+	 * Spreads parallel `POST /auth/session` traffic so shared egress IPs stay
+	 * under Trepa’s auth rate limit. Default `200` via {@link Bots}. Use `0`
+	 * for no delay.
+	 */
+	sessionStaggerMs?: number;
 }
 
 /**
@@ -93,6 +100,7 @@ export class Trepa extends TrepaClient {
 			DEFAULT_SOLANA_RPC_SUBSCRIPTIONS_URL;
 		this.bots = new Bots(credentials, {
 			baseUrl,
+			sessionStaggerMs: config.sessionStaggerMs,
 		});
 	}
 }

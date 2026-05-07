@@ -106,6 +106,23 @@ export const credentialsFromEnv = (): BotCredentials[] => {
 	);
 };
 
+/**
+ * Shared {@link Session} options for every swarm slot, plus tuning for Trepa’s
+ * per-IP `/auth/session` rate limit when many bots start together.
+ */
+export type BotSwarmDefaults = Omit<SessionConfig, 'apiKey' | 'privateKey'> & {
+	/**
+	 * Before a slot’s first HTTP request, waits `index * sessionStaggerMs`.
+	 * Default `200`. Set `0` to disable.
+	 */
+	sessionStaggerMs?: number;
+};
+
+const staggerFirstRequest = (ms: number): Promise<void> =>
+	new Promise((resolve) => {
+		setTimeout(resolve, ms);
+	});
+
 /** A bot's seat in the swarm. */
 export interface BotSlot {
 	/** Zero-based index of this bot in the swarm. */
@@ -259,13 +276,16 @@ export class Bots {
 		SessionConfig,
 		'apiKey' | 'privateKey'
 	>;
+	private readonly sessionStaggerMs: number;
 
 	constructor(
 		credentials: readonly BotCredentials[],
-		sessionDefaults: Omit<SessionConfig, 'apiKey' | 'privateKey'> = {},
+		sessionDefaults: BotSwarmDefaults = {},
 	) {
+		const { sessionStaggerMs, ...rest } = sessionDefaults;
 		this.credentials = credentials;
-		this.sessionDefaults = sessionDefaults;
+		this.sessionDefaults = rest;
+		this.sessionStaggerMs = sessionStaggerMs ?? 200;
 	}
 
 	/** Number of bots in the swarm. */
@@ -311,6 +331,9 @@ export class Bots {
 			await Promise.all(
 				this.credentials.map(async (creds, index) => {
 					const slot: BotSlot = { index, count };
+					if (this.sessionStaggerMs > 0 && index > 0) {
+						await staggerFirstRequest(this.sessionStaggerMs * index);
+					}
 					const session = new Session({ ...this.sessionDefaults, ...creds });
 					const client = new TrepaClient(session);
 					const opts = withTag(slot, factory(slot));

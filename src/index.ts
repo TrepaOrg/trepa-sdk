@@ -6,6 +6,7 @@ export { signTransaction } from './sign';
 export { Bots, credentialsFromEnv } from './bot';
 export type {
 	BotCredentials,
+	BotSwarmDefaults,
 	BotSlot,
 	BotOptions,
 	BotContext,

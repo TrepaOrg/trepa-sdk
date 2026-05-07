@@ -21,6 +21,42 @@ const parseCookiePair = (raw: string): [string, string] | null => {
 const formatCookieHeader = (jar: CookieJar): string =>
 	[...jar.entries()].map(([name, value]) => `${name}=${value}`).join('; ');
 
+const delayMs = (ms: number): Promise<void> =>
+	new Promise((resolve) => {
+		setTimeout(resolve, ms);
+	});
+
+const parseRetryAfterMs = (headers: Headers): number | undefined => {
+	const raw = headers.get('retry-after');
+	if (!raw) return undefined;
+	const sec = Number.parseInt(raw, 10);
+	if (!Number.isNaN(sec) && sec >= 0) return sec * 1000;
+	return undefined;
+};
+
+type PostAttempt = { error?: unknown; response: Response };
+
+/**
+ * Replays POSTs that failed with rate-limit / overload statuses so swarms
+ * and recoverAuth() can clear Trepa’s per-IP auth buckets without crashing.
+ */
+const fetchWithTransientRetry = async (
+	fn: () => Promise<PostAttempt>,
+	maxAttempts: number,
+): Promise<PostAttempt> => {
+	for (let attempt = 1; ; attempt++) {
+		const result = await fn();
+		if (result.response.ok) return result;
+		const transient =
+			result.response.status === 429 || result.response.status === 503;
+		if (!transient || attempt >= maxAttempts) return result;
+		const retryAfterMs = parseRetryAfterMs(result.response.headers);
+		const backoff =
+			retryAfterMs ?? Math.min(60_000, 1_000 * 2 ** (attempt - 1));
+		await delayMs(backoff + Math.floor(Math.random() * 250));
+	}
+};
+
 const captureSetCookies = (response: Response, jar: CookieJar): void => {
 	const headers = response.headers as Headers & {
 		getSetCookie?: () => string[];
@@ -142,16 +178,18 @@ export class Session {
 	}
 
 	async refresh(): Promise<void> {
-		const { error, response } = await this.client.POST('/auth/refresh');
-		if (!response.ok) {
-			const resolved = await resolveErrorBody(response, error);
-			throw errorFromResponse(
-				response,
-				resolved.payload,
-				'Failed to refresh Trepa session',
-				resolved.unparsedText,
-			);
-		}
+		const { error, response } = await fetchWithTransientRetry(
+			() => this.client.POST('/auth/refresh'),
+			8,
+		);
+		if (response.ok) return;
+		const resolved = await resolveErrorBody(response, error);
+		throw errorFromResponse(
+			response,
+			resolved.payload,
+			'Failed to refresh Trepa session',
+			resolved.unparsedText,
+		);
 	}
 
 	async logout(): Promise<void> {
@@ -197,18 +235,21 @@ export class Session {
 				code: 'missing_api_key',
 			});
 		}
-		const { error, response } = await this.client.POST('/auth/session', {
-			headers: { 'trepa-api-key': apiKey },
-		});
-		if (!response.ok) {
-			const resolved = await resolveErrorBody(response, error);
-			throw errorFromResponse(
-				response,
-				resolved.payload,
-				'Failed to start Trepa session',
-				resolved.unparsedText,
-			);
-		}
+		const { error, response } = await fetchWithTransientRetry(
+			() =>
+				this.client.POST('/auth/session', {
+					headers: { 'trepa-api-key': apiKey },
+				}),
+			8,
+		);
+		if (response.ok) return;
+		const resolved = await resolveErrorBody(response, error);
+		throw errorFromResponse(
+			response,
+			resolved.payload,
+			'Failed to start Trepa session',
+			resolved.unparsedText,
+		);
 	}
 }
 
