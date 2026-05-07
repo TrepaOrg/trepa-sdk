@@ -26,14 +26,14 @@ import {
 } from '@solana-program/token';
 import { type BotCredentials, trepaLog, Trepa } from '@trepa/sdk';
 
-const USDC_TARGET = 5;
+const USDC_TARGET = 6;
 const USDC_THRESHOLD = 3;
 const FUND_INTERVAL_MS = 60_000;
 const FUNDER_SHUTDOWN_WAIT_MS = 15_000;
 const REBALANCE_ENABLED = true;
-const REBALANCE_INTERVAL_MS = 2 * FUND_INTERVAL_MS;
-const REBALANCE_MAX_TRANSFER = 2;
-const REBALANCE_DONOR_RESERVE = 2;
+const REBALANCE_INTERVAL_MS = FUND_INTERVAL_MS;
+const REBALANCE_MAX_TRANSFER = 6;
+const REBALANCE_DONOR_RESERVE = 3;
 const REBALANCE_MIN_PNL_GAP = 0;
 
 interface BotWallet {
