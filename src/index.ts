@@ -12,9 +12,13 @@ export type {
 	BotContext,
 	BotPredictDecision,
 	BotPredictionInfo,
+	BotPredictionUpdatedInfo,
+	BotUpdatePredictionDecision,
+	BotSubmittedPredictionContext,
 	BotSkippedInfo,
 	OpenPool,
 } from './bot';
+export { snapOutcomeToPool } from './bot';
 export type { components, operations, paths } from './api/schema';
 export {
 	trepaLog,

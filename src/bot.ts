@@ -19,6 +19,9 @@ type UserDto = components['schemas']['UserDto'];
 /** What `predict` returns: a `{ value, stake }` to submit, or `null` to skip. */
 export type BotPredictDecision = { value: number; stake: number } | null;
 
+/** What `updatePrediction` returns: a new `{ value }` to submit, or `null` to skip. */
+export type BotUpdatePredictionDecision = { value: number } | null;
+
 /** API + signing credentials for one bot in the swarm. */
 export interface BotCredentials {
 	/** The bot's Trepa API key (from your account settings). */
@@ -132,8 +135,9 @@ export interface BotSlot {
 }
 
 /**
- * Runtime context for the current bot slot, passed to `predict` and lifecycle
- * hooks. Everything is bound to this bot's session — calls on `ctx.trepa` hit
+ * Runtime context for the current bot slot, passed to `predict`,
+ * `updatePrediction`, and lifecycle hooks. Everything is bound to this bot's
+ * session — calls on `ctx.trepa` hit
  * the API as this bot's identity, never as the swarm's first slot.
  */
 export interface BotContext {
@@ -165,6 +169,28 @@ export interface BotPredictionInfo {
 	/** Final value submitted (snapped to `pool.step`, clamped to outcome range). */
 	value: number;
 	/** Final stake submitted (clamped to `[min_stake, max_stake]`). */
+	stake: number;
+}
+
+/**
+ * Context for {@link BotOptions.updatePrediction}: the row id Trepa uses for
+ * `predictions.update`, plus the pool and the last submitted value/stake.
+ */
+export interface BotSubmittedPredictionContext {
+	pool: OpenPool;
+	value: number;
+	stake: number;
+	predictionId: string;
+}
+
+/** Context handed to `onPredictionUpdated` after a successful value update. */
+export interface BotPredictionUpdatedInfo {
+	pool: OpenPool;
+	predictionId: string;
+	/** Outcome value from the initial create (snapped/clamped). */
+	previousValue: number;
+	/** New outcome value from this update (snapped/clamped). */
+	value: number;
 	stake: number;
 }
 
@@ -209,6 +235,27 @@ export interface BotOptions {
 		pool: OpenPool,
 		ctx: BotContext,
 	) => BotPredictDecision | Promise<BotPredictDecision>;
+	/**
+	 * Optional follow-up after the initial on-chain prediction is created.
+	 * Runs only when this hook is set: the SDK resolves `predictionId` from
+	 * your active predictions for this pool (with retries for indexer lag),
+	 * then awaits this function.
+	 *
+	 * Return `{ value }` to submit an update (snapped/clamped like `predict`),
+	 * or `null` to leave the prediction unchanged. Use {@link BotContext} for
+	 * `signal`, extra API calls, etc. — e.g. wait until shortly before
+	 * `info.pool.prediction_end_date`, recompute, then `return { value }`.
+	 *
+	 * The call is raced against {@link BotContext.signal} like `predict`, so
+	 * shutdown does not wait indefinitely. Errors are logged via `onError` when
+	 * set; they do not stop the bot loop.
+	 */
+	updatePrediction?: (
+		info: BotSubmittedPredictionContext,
+		ctx: BotContext,
+	) =>
+		| BotUpdatePredictionDecision
+		| Promise<BotUpdatePredictionDecision>;
 	/** Polling cadence when no pool is open. Default 5s. */
 	pollIntervalMs?: number;
 	/** Extra wait after a pool's `prediction_end_date` before polling again. Default 250ms. */
@@ -229,13 +276,16 @@ export interface BotOptions {
 	 */
 	signal?: AbortSignal;
 	/**
-	 * Optional lifecycle hooks: `onStart`, `onPredicted`, `onPoolSkipped`,
-	 * `onError`. Use them to react after auth, after a successful submission,
-	 * when a pool is skipped, or on errors. Each receives a typed payload;
-	 * return `string` or `void` per the `BotOptions` typings.
+	 * Optional lifecycle hooks: `onStart`, `onPredicted`,
+	 * `onPredictionUpdated`, `onPoolSkipped`, `onError`, plus optional
+	 * `updatePrediction` (see there). Use them to react after auth, after a
+	 * successful submission or update, when a pool is skipped, or on errors.
+	 * Each receives a typed payload; return `string` or `void` per the
+	 * `BotOptions` typings.
 	 */
 	onStart?: (ctx: BotContext) => string | void;
 	onPredicted?: (info: BotPredictionInfo) => string | void;
+	onPredictionUpdated?: (info: BotPredictionUpdatedInfo) => string | void;
 	onPoolSkipped?: (info: BotSkippedInfo) => string | void;
 	onError?: (err: unknown) => string | void;
 }
@@ -243,6 +293,8 @@ export interface BotOptions {
 const DEFAULT_POLL_INTERVAL_MS = 5_000;
 const DEFAULT_POST_RESOLVE_BUFFER_MS = 250;
 const SHUTDOWN_SIGNALS = ['SIGINT', 'SIGTERM'] as const;
+const RESOLVE_PREDICTION_MAX_ATTEMPTS = 24;
+const RESOLVE_PREDICTION_DELAY_MS = 500;
 
 /**
  * One or more long-running predictor loops, one per credential passed to
@@ -373,6 +425,7 @@ const withTag = (slot: BotSlot, opts: BotOptions): BotOptions => {
 		...opts,
 		onStart: wrap(opts.onStart),
 		onPredicted: wrap(opts.onPredicted),
+		onPredictionUpdated: wrap(opts.onPredictionUpdated),
 		onPoolSkipped: wrap(opts.onPoolSkipped),
 		onError: wrap(opts.onError),
 	};
@@ -542,6 +595,30 @@ const classify = async (ctx: MachineCtx): Promise<BotState> => {
 	return { kind: 'predicting', pool };
 };
 
+async function resolvePredictionIdForPool(
+	client: TrepaClient,
+	userId: string,
+	poolId: string,
+	signal: AbortSignal,
+): Promise<string | null> {
+	for (let attempt = 0; attempt < RESOLVE_PREDICTION_MAX_ATTEMPTS; attempt++) {
+		if (signal.aborted) return null;
+		try {
+			const rows = await client.users.predictions(userId, {
+				filter_by: ['ACTIVE'],
+				includes: ['pool'],
+				limit: 50,
+			});
+			const row = rows.find((p) => p.pool?.id === poolId);
+			if (row) return row.id;
+		} catch {
+			// Retry until the new prediction is visible.
+		}
+		await sleep(RESOLVE_PREDICTION_DELAY_MS, signal);
+	}
+	return null;
+}
+
 const tryPredict = async (
 	ctx: MachineCtx,
 	pool: OpenPool,
@@ -625,7 +702,7 @@ const tryPredict = async (
 		return;
 	}
 
-	const value = snap(decision.value, pool);
+	const value = snapOutcomeToPool(decision.value, pool);
 	const stake = clamp(decision.stake, pool.min_stake, pool.max_stake);
 
 	try {
@@ -634,6 +711,94 @@ const tryPredict = async (
 			'pred',
 			lineForPredicted(options, { pool, value, stake }, ctx.publicCtx.slot),
 		);
+		if (options.updatePrediction) {
+			const predictionId = await resolvePredictionIdForPool(
+				ctx.client,
+				ctx.publicCtx.me.id,
+				pool.id,
+				ctx.signal,
+			);
+			if (!predictionId) {
+				emit(
+					'error',
+					lineForError(
+						options,
+						new TrepaError(
+							'Could not resolve prediction id for updatePrediction ' +
+								'(active prediction for this pool not found after submit).',
+							{ status: 0, code: 'prediction_id_unresolved' },
+						),
+						ctx.publicCtx.slot,
+					),
+				);
+			} else {
+				const submitted: BotSubmittedPredictionContext = {
+					pool,
+					value,
+					stake,
+					predictionId,
+				};
+				let updateDecision: BotUpdatePredictionDecision;
+				try {
+					updateDecision = await Promise.race([
+						options.updatePrediction(submitted, ctx.publicCtx),
+						untilAborted(ctx.signal).then(
+							(): BotUpdatePredictionDecision => null,
+						),
+					]);
+				} catch (err) {
+					emit('error', lineForError(options, err, ctx.publicCtx.slot));
+					updateDecision = null;
+				}
+
+				if (ctx.signal.aborted) {
+					updateDecision = null;
+				}
+
+				if (updateDecision === null) {
+					/* skip update */
+				} else if (!Number.isFinite(updateDecision.value)) {
+					emit(
+						'error',
+						lineForError(
+							options,
+							new TrepaError(
+								'updatePrediction returned a non-finite value.',
+								{ status: 0, code: 'update_prediction_invalid_value' },
+							),
+							ctx.publicCtx.slot,
+						),
+					);
+				} else {
+					const updateValue = snapOutcomeToPool(
+						updateDecision.value,
+						pool,
+					);
+					try {
+						await ctx.client.predictions.update({
+							predictionId,
+							value: updateValue,
+						});
+						emit(
+							'pred_update',
+							lineForPredictionUpdated(
+								options,
+								{
+									pool,
+									predictionId,
+									previousValue: value,
+									value: updateValue,
+									stake,
+								},
+								ctx.publicCtx.slot,
+							),
+						);
+					} catch (err) {
+						emit('error', lineForError(options, err, ctx.publicCtx.slot));
+					}
+				}
+			}
+		}
 	} catch (err) {
 		emit('error', lineForError(options, err, ctx.publicCtx.slot));
 	}
@@ -669,6 +834,21 @@ function lineForPredicted(
 	return prefixSlotLine(
 		slot,
 		`Submitted ${pool.title} → ${formatNumber(value, pool.precision)} @ ${formatNumber(stake, 2)} USDC`,
+	);
+}
+
+function lineForPredictionUpdated(
+	options: BotOptions,
+	info: BotPredictionUpdatedInfo,
+	slot: BotSlot,
+): string {
+	const custom = options.onPredictionUpdated?.(info);
+	if (custom !== undefined) return custom;
+	const { pool, previousValue, value, stake } = info;
+	return prefixSlotLine(
+		slot,
+		`Updated ${pool.title} → ${formatNumber(previousValue, pool.precision)} ` +
+			`→ ${formatNumber(value, pool.precision)} @ ${formatNumber(stake, 2)} USDC`,
 	);
 }
 
@@ -709,15 +889,21 @@ const emit = (kind: EventKind, value: string | void): void => {
 	if (typeof value === 'string') writeEvent(kind, value);
 };
 
-function snap(value: number, pool: OpenPool): number {
+function clamp(value: number, min: number, max: number): number {
+	return Math.min(Math.max(value, min), max);
+}
+
+/**
+ * Snap a raw outcome to `pool.step` and clamp to
+ * `[pool.min_outcome, pool.max_outcome]` — same rules as the initial
+ * `predict` submission. Use when building values for
+ * `predictions.update`.
+ */
+export function snapOutcomeToPool(value: number, pool: OpenPool): number {
 	const snapped =
 		Math.round((value - pool.min_outcome) / pool.step) * pool.step +
 		pool.min_outcome;
 	return clamp(snapped, pool.min_outcome, pool.max_outcome);
-}
-
-function clamp(value: number, min: number, max: number): number {
-	return Math.min(Math.max(value, min), max);
 }
 
 function untilAborted(signal: AbortSignal): Promise<void> {

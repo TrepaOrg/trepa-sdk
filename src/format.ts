@@ -59,7 +59,7 @@ export const formatError = (err: unknown): string => {
 	return String(err);
 };
 
-export type EventKind = 'ready' | 'pred' | 'skip' | 'error';
+export type EventKind = 'ready' | 'pred' | 'pred_update' | 'skip' | 'error';
 
 /**
  * One-line bot events mapped to consola types. Skip uses `info` so skips align
@@ -71,6 +71,9 @@ export const writeEvent = (kind: EventKind, message: string): void => {
 			trepaLog.ready(message);
 			break;
 		case 'pred':
+			trepaLog.success(message);
+			break;
+		case 'pred_update':
 			trepaLog.success(message);
 			break;
 		case 'skip':
