@@ -1,3 +1,24 @@
+/**
+ * Example bot: normal-quantile liquidity spread around BTC spot, with a late
+ * `updatePrediction` refresh before pool close (see `LEAD_TIME_MS`).
+ *
+ * @example Strategy reference
+ * ```json
+ * {
+ *   "id": "liquidity-bot",
+ *   "predict": {
+ *     "value": "spot + sigma * inverseNormalCdf((index + 0.5) / count)",
+ *     "sigma": "spot * stdLogReturns * sqrt(resolutionMinutes)",
+ *     "stake": "pool.min_stake"
+ *   },
+ *   "updatePrediction": {
+ *     "timingMsBeforeClose": 10000,
+ *     "value": "same formula as predict; returns null if past close"
+ *   }
+ * }
+ * ```
+ */
+
 import { Trepa, credentialsFromEnv } from '@trepa/sdk';
 import type { BotSubmittedPredictionContext } from '../../src/bot.ts';
 
