@@ -20,7 +20,6 @@
  */
 
 import { Trepa, credentialsFromEnv } from '@trepa/sdk';
-import type { BotSubmittedPredictionContext } from '../../src/bot.ts';
 
 import { withManager } from './bot.manager.ts';
 import {
@@ -28,6 +27,7 @@ import {
 	fetchBtcStdLogReturns,
 	inverseNormalCdf,
 } from './utils.ts';
+import type { BotSubmittedPredictionContext } from '../../src/bot.ts';
 
 const credentials = credentialsFromEnv();
 

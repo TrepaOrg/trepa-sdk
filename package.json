@@ -61,6 +61,7 @@
     "openapi-fetch": "0.17.0"
   },
   "devDependencies": {
+    "@eslint/compat": "2.1.0",
     "@types/node": "22.19.17",
     "@typescript-eslint/eslint-plugin": "8.59.1",
     "@typescript-eslint/parser": "8.59.1",

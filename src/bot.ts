@@ -253,9 +253,7 @@ export interface BotOptions {
 	updatePrediction?: (
 		info: BotSubmittedPredictionContext,
 		ctx: BotContext,
-	) =>
-		| BotUpdatePredictionDecision
-		| Promise<BotUpdatePredictionDecision>;
+	) => BotUpdatePredictionDecision | Promise<BotUpdatePredictionDecision>;
 	/** Polling cadence when no pool is open. Default 5s. */
 	pollIntervalMs?: number;
 	/** Extra wait after a pool's `prediction_end_date` before polling again. Default 250ms. */
@@ -762,18 +760,15 @@ const tryPredict = async (
 						'error',
 						lineForError(
 							options,
-							new TrepaError(
-								'updatePrediction returned a non-finite value.',
-								{ status: 0, code: 'update_prediction_invalid_value' },
-							),
+							new TrepaError('updatePrediction returned a non-finite value.', {
+								status: 0,
+								code: 'update_prediction_invalid_value',
+							}),
 							ctx.publicCtx.slot,
 						),
 					);
 				} else {
-					const updateValue = snapOutcomeToPool(
-						updateDecision.value,
-						pool,
-					);
+					const updateValue = snapOutcomeToPool(updateDecision.value, pool);
 					try {
 						await ctx.client.predictions.update({
 							predictionId,

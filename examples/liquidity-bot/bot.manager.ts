@@ -126,7 +126,7 @@ async function runFunderLoop(
 			`${USDC_TARGET} USDC (fill below ${USDC_THRESHOLD}) and ` +
 			`${SOL_TARGET} SOL (fill below ${SOL_THRESHOLD}) ` +
 			`(master SOL reserve ${MASTER_SOL_RESERVE}; up to ` +
-				`${MAX_BOTS_PER_TX} bots per tx)`,
+			`${MAX_BOTS_PER_TX} bots per tx)`,
 	);
 
 	while (!signal.aborted) {
@@ -203,7 +203,8 @@ async function bootstrapFunder(
 
 	const bots: BotWallet[] = botSigners.map((s, i) => ({
 		address: s.address,
-		label: credentials.length > 1 ? `bot ${i + 1}/${credentials.length}` : 'bot',
+		label:
+			credentials.length > 1 ? `bot ${i + 1}/${credentials.length}` : 'bot',
 		signer: s,
 	}));
 

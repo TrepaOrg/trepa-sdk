@@ -3,4 +3,4 @@ services:
     build: .
     env_file:
       - .env
-    restart: "no"
+    restart: 'no'

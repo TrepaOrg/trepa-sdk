@@ -1,3 +1,4 @@
+import { fixupPluginRules } from '@eslint/compat';
 import tsParser from '@typescript-eslint/parser';
 import tsPlugin from '@typescript-eslint/eslint-plugin';
 import importPlugin from 'eslint-plugin-import';
@@ -23,7 +24,7 @@ export default [
 		},
 		plugins: {
 			'@typescript-eslint': tsPlugin,
-			import: importPlugin,
+			import: fixupPluginRules(importPlugin),
 			prettier: prettierPlugin,
 		},
 		rules: {
