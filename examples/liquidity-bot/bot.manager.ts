@@ -30,8 +30,8 @@ import { type BotCredentials, trepaLog, Trepa } from '@trepa/sdk';
 const USDC_TARGET = 10;
 const USDC_THRESHOLD = 5;
 
-const SOL_TARGET = 0.02;
-const SOL_THRESHOLD = 0.005;
+const SOL_TARGET = 0.05;
+const SOL_THRESHOLD = 0.01;
 
 const MASTER_SOL_RESERVE = 0.1;
 const MAX_BOTS_PER_TX = 5;
