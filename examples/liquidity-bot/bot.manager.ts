@@ -17,6 +17,7 @@ import {
 	setTransactionMessageLifetimeUsingBlockhash,
 	signTransactionMessageWithSigners,
 } from '@solana/kit';
+import { getTransferSolInstruction } from '@solana-program/system';
 import {
 	TOKEN_PROGRAM_ADDRESS,
 	fetchMaybeToken,
@@ -26,22 +27,22 @@ import {
 } from '@solana-program/token';
 import { type BotCredentials, trepaLog, Trepa } from '@trepa/sdk';
 
-const USDC_TARGET = 6;
-const USDC_THRESHOLD = 3;
+const USDC_TARGET = 10;
+const USDC_THRESHOLD = 5;
+
+const SOL_TARGET = 0.02;
+const SOL_THRESHOLD = 0.005;
+
+const MASTER_SOL_RESERVE = 0.1;
+const MAX_BOTS_PER_TX = 5;
+
 const FUND_INTERVAL_MS = 60_000;
 const FUNDER_SHUTDOWN_WAIT_MS = 15_000;
-const REBALANCE_ENABLED = true;
-const REBALANCE_INTERVAL_MS = FUND_INTERVAL_MS;
-const REBALANCE_MAX_TRANSFER = 6;
-const REBALANCE_DONOR_RESERVE = 3;
-const REBALANCE_MIN_PNL_GAP = 0;
 
 interface BotWallet {
 	address: Address;
 	label: string;
 	signer: KeyPairSigner<string>;
-	client: Trepa;
-	userId: string;
 }
 
 interface FunderCtx {
@@ -53,17 +54,24 @@ interface FunderCtx {
 	decimals: number;
 	targetUnits: bigint;
 	thresholdUnits: bigint;
-	rebalanceCapUnits: bigint;
-	rebalanceDonorReserveUnits: bigint;
-	rebalanceMinPnlGap: number;
+	solTargetLamports: bigint;
+	solThresholdLamports: bigint;
+	rentExemptLamports: bigint;
+	masterSolReserveLamports: bigint;
 }
 
-interface BotSnapshot {
+interface BotSyncSnapshot {
 	bot: BotWallet;
-	ata: Address;
-	hasAta: boolean;
-	balance: bigint;
-	pnl: number;
+	botAta: Address;
+	needsAta: boolean;
+	usdcDelta: bigint;
+	solDelta: bigint;
+}
+
+interface BotSyncPlan {
+	bot: BotWallet;
+	instructions: Instruction[];
+	movements: string[];
 }
 
 export const withManager = async (
@@ -113,40 +121,20 @@ async function runFunderLoop(
 	const { ctx, bots } = bootstrap;
 
 	trepaLog.ready(
-		`master ${shortAddr(ctx.master.address)} watching ${bots.length} ` +
-			`bot${bots.length === 1 ? '' : 's'} ` +
-			`(USDC target ${USDC_TARGET}, threshold ${USDC_THRESHOLD})`,
+		`master ${shortAddr(ctx.master.address)} syncing ${bots.length} ` +
+			`bot${bots.length === 1 ? '' : 's'} to ` +
+			`${USDC_TARGET} USDC (fill below ${USDC_THRESHOLD}) and ` +
+			`${SOL_TARGET} SOL (fill below ${SOL_THRESHOLD}) ` +
+			`(master SOL reserve ${MASTER_SOL_RESERVE}; up to ` +
+				`${MAX_BOTS_PER_TX} bots per tx)`,
 	);
-	if (REBALANCE_ENABLED) {
-		trepaLog.info(
-			'rebalance enabled ' +
-				`(every ${Math.round(REBALANCE_INTERVAL_MS / 1_000)}s, ` +
-				`max transfer ${REBALANCE_MAX_TRANSFER} USDC, ` +
-				`donor reserve ${REBALANCE_DONOR_RESERVE} USDC, ` +
-				`min pnl gap ${REBALANCE_MIN_PNL_GAP})`,
-		);
-	}
-
-	let nextRebalanceAt = 0;
 
 	while (!signal.aborted) {
-		if (REBALANCE_ENABLED && Date.now() >= nextRebalanceAt) {
-			try {
-				await rebalanceBotsIfNeeded(ctx, bots, signal);
-			} catch (err) {
-				trepaLog.error(`rebalance failed — ${describeError(err)}`);
-			} finally {
-				nextRebalanceAt = Date.now() + REBALANCE_INTERVAL_MS;
-			}
-		}
-
-		for (const bot of bots) {
-			if (signal.aborted) return;
-			try {
-				await topUpBotIfNeeded(ctx, bot);
-			} catch (err) {
-				trepaLog.error(`${bot.label}: top-up failed — ${describeError(err)}`);
-			}
+		if (signal.aborted) return;
+		try {
+			await syncAllBotsBundled(ctx, bots);
+		} catch (err) {
+			trepaLog.error(`bundled sync failed — ${describeError(err)}`);
 		}
 		await sleep(FUND_INTERVAL_MS, signal);
 	}
@@ -161,16 +149,6 @@ async function bootstrapFunder(
 		createSignerFromBase58(masterPrivateKey),
 		...credentials.map((c) => createSignerFromBase58(c.privateKey)),
 	]);
-	const botClients = credentials.map(
-		(c) =>
-			new Trepa({
-				credentials: [c],
-				solanaRpcUrl: trepa.solanaRpcUrl,
-				solanaRpcSubscriptionsUrl: trepa.solanaRpcSubscriptionsUrl,
-			}),
-	);
-	const botUsers = await Promise.all(botClients.map((client) => client.me()));
-
 	const { mint, decimals } = await fetchStakeMint(trepa);
 
 	const rpc = createSolanaRpc(trepa.solanaRpcUrl);
@@ -183,12 +161,30 @@ async function bootstrapFunder(
 	});
 
 	const targetUnits = toBaseUnits(USDC_TARGET, decimals);
-	const thresholdUnits = toBaseUnits(USDC_THRESHOLD, decimals);
-	const rebalanceCapUnits = toBaseUnits(REBALANCE_MAX_TRANSFER, decimals);
-	const rebalanceDonorReserveUnits = toBaseUnits(
-		REBALANCE_DONOR_RESERVE,
-		decimals,
-	);
+	let thresholdUnits = toBaseUnits(USDC_THRESHOLD, decimals);
+	if (thresholdUnits > targetUnits) {
+		thresholdUnits = targetUnits;
+		trepaLog.info(
+			'USDC_THRESHOLD exceeds USDC_TARGET — using target as the fill threshold.',
+		);
+	}
+
+	const solTargetLamports = solToLamports(SOL_TARGET);
+	const masterSolReserveLamports = solToLamports(MASTER_SOL_RESERVE);
+	const rentExemptLamports = await rpc
+		.getMinimumBalanceForRentExemption(0n)
+		.send();
+	const solFloorLamports =
+		solTargetLamports > rentExemptLamports
+			? solTargetLamports
+			: rentExemptLamports;
+	let solThresholdLamports = solToLamports(SOL_THRESHOLD);
+	if (solThresholdLamports > solFloorLamports) {
+		solThresholdLamports = solFloorLamports;
+		trepaLog.info(
+			'SOL_THRESHOLD is above the enforced SOL floor — clamping threshold to that floor.',
+		);
+	}
 
 	const [masterAta] = await findAssociatedTokenPda({
 		mint,
@@ -205,17 +201,18 @@ async function bootstrapFunder(
 		);
 	}
 
-	const bots: BotWallet[] = botSigners.map((s, i) => {
-		const user = botUsers[i];
-		return {
-			address: s.address,
-			label:
-				credentials.length > 1 ? `bot ${i + 1}/${credentials.length}` : 'bot',
-			signer: s,
-			client: botClients[i],
-			userId: user.id,
-		};
-	});
+	const bots: BotWallet[] = botSigners.map((s, i) => ({
+		address: s.address,
+		label: credentials.length > 1 ? `bot ${i + 1}/${credentials.length}` : 'bot',
+		signer: s,
+	}));
+
+	if (solTargetLamports < rentExemptLamports) {
+		trepaLog.info(
+			`SOL_TARGET is below rent-exempt minimum for an empty wallet ` +
+				`(${formatSolFromLamports(rentExemptLamports)} SOL); bots use that floor.`,
+		);
+	}
 
 	return {
 		ctx: {
@@ -227,9 +224,10 @@ async function bootstrapFunder(
 			decimals,
 			targetUnits,
 			thresholdUnits,
-			rebalanceCapUnits,
-			rebalanceDonorReserveUnits,
-			rebalanceMinPnlGap: REBALANCE_MIN_PNL_GAP,
+			solTargetLamports,
+			solThresholdLamports,
+			rentExemptLamports,
+			masterSolReserveLamports,
 		},
 		bots,
 	};
@@ -251,188 +249,191 @@ async function fetchStakeMint(
 	};
 }
 
-async function topUpBotIfNeeded(ctx: FunderCtx, bot: BotWallet): Promise<void> {
+async function loadBotSyncSnapshot(
+	ctx: FunderCtx,
+	bot: BotWallet,
+): Promise<BotSyncSnapshot | null> {
 	const [botAta] = await findAssociatedTokenPda({
 		mint: ctx.mint,
 		owner: bot.address,
 		tokenProgram: TOKEN_PROGRAM_ADDRESS,
 	});
 
-	const tokenAccount = await fetchMaybeToken(ctx.rpc, botAta);
-	const current = tokenAccount.exists ? tokenAccount.data.amount : 0n;
+	const [tokenAccount, botBalanceResponse] = await Promise.all([
+		fetchMaybeToken(ctx.rpc, botAta),
+		ctx.rpc.getBalance(bot.address).send(),
+	]);
+	const currentUsdc = tokenAccount.exists ? tokenAccount.data.amount : 0n;
 	const needsAta = !tokenAccount.exists;
+	const botLamports = BigInt(botBalanceResponse.value);
+	const solFloorLamports =
+		ctx.solTargetLamports > ctx.rentExemptLamports
+			? ctx.solTargetLamports
+			: ctx.rentExemptLamports;
 
-	if (!needsAta && current >= ctx.thresholdUnits) return;
+	let usdcDelta = 0n;
+	if (currentUsdc < ctx.thresholdUnits) {
+		usdcDelta = ctx.targetUnits - currentUsdc;
+	} else if (currentUsdc > ctx.targetUnits) {
+		usdcDelta = ctx.targetUnits - currentUsdc;
+	}
 
+	let solDelta = 0n;
+	if (botLamports < ctx.solThresholdLamports) {
+		solDelta = solFloorLamports - botLamports;
+	} else if (botLamports > solFloorLamports) {
+		solDelta = solFloorLamports - botLamports;
+	}
+
+	if (usdcDelta === 0n && solDelta === 0n) return null;
+
+	return {
+		bot,
+		botAta,
+		needsAta,
+		usdcDelta,
+		solDelta,
+	};
+}
+
+async function buildBotSyncPlan(
+	ctx: FunderCtx,
+	snap: BotSyncSnapshot,
+	masterSolSpendBudget: { value: bigint },
+): Promise<BotSyncPlan> {
 	const instructions: Instruction[] = [];
 	const movements: string[] = [];
 
-	if (needsAta) {
+	if (snap.needsAta && ctx.targetUnits > 0n && snap.usdcDelta > 0n) {
 		instructions.push(
 			await getCreateAssociatedTokenIdempotentInstructionAsync({
 				payer: ctx.master,
-				owner: bot.address,
+				owner: snap.bot.address,
 				mint: ctx.mint,
 			}),
 		);
+		movements.push('created ATA');
 	}
 
-	const deficit = ctx.targetUnits - current;
-	if (deficit > 0n) {
+	if (snap.usdcDelta > 0n) {
 		instructions.push(
 			getTransferCheckedInstruction({
 				source: ctx.masterAta,
 				mint: ctx.mint,
-				destination: botAta,
+				destination: snap.botAta,
 				authority: ctx.master,
-				amount: deficit,
+				amount: snap.usdcDelta,
 				decimals: ctx.decimals,
 			}),
 		);
-		movements.push(`+${formatBaseUnits(deficit, ctx.decimals)} USDC`);
-	} else if (needsAta) {
-		movements.push('created ATA');
+		movements.push(`+${formatBaseUnits(snap.usdcDelta, ctx.decimals)} USDC`);
+	} else if (snap.usdcDelta < 0n) {
+		const sweep = -snap.usdcDelta;
+		instructions.push(
+			getTransferCheckedInstruction({
+				source: snap.botAta,
+				mint: ctx.mint,
+				destination: ctx.masterAta,
+				authority: snap.bot.signer,
+				amount: sweep,
+				decimals: ctx.decimals,
+			}),
+		);
+		movements.push(`-${formatBaseUnits(sweep, ctx.decimals)} USDC`);
 	}
 
-	if (instructions.length === 0) return;
+	if (snap.solDelta > 0n) {
+		if (masterSolSpendBudget.value >= snap.solDelta) {
+			masterSolSpendBudget.value -= snap.solDelta;
+			instructions.push(
+				getTransferSolInstruction({
+					source: ctx.master,
+					destination: snap.bot.address,
+					amount: snap.solDelta,
+				}),
+			);
+			movements.push(`+${formatSolFromLamports(snap.solDelta)} SOL`);
+		} else {
+			trepaLog.warn(
+				`${snap.bot.label}: skip SOL from master (bundle budget ` +
+					`${formatSolFromLamports(masterSolSpendBudget.value)} SOL; need ` +
+					`${formatSolFromLamports(snap.solDelta)})`,
+			);
+		}
+	} else if (snap.solDelta < 0n) {
+		const sweep = -snap.solDelta;
+		instructions.push(
+			getTransferSolInstruction({
+				source: snap.bot.signer,
+				destination: ctx.master.address,
+				amount: sweep,
+			}),
+		);
+		movements.push(`-${formatSolFromLamports(sweep)} SOL`);
+	}
 
-	const { value: latestBlockhash } = await ctx.rpc.getLatestBlockhash().send();
-	const message = pipe(
-		createTransactionMessage({ version: 0 }),
-		(tx) => setTransactionMessageFeePayerSigner(ctx.master, tx),
-		(tx) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, tx),
-		(tx) => appendTransactionMessageInstructions(instructions, tx),
-	);
-	const signed = await signTransactionMessageWithSigners(message);
-	assertIsTransactionWithinSizeLimit(signed);
-	assertIsTransactionWithBlockhashLifetime(signed);
-	await ctx.sendAndConfirm(signed, { commitment: 'confirmed' });
-
-	trepaLog.success(`${bot.label}: ${movements.join(', ')}`);
+	return { bot: snap.bot, instructions, movements };
 }
 
-async function rebalanceBotsIfNeeded(
+async function syncAllBotsBundled(
 	ctx: FunderCtx,
 	bots: readonly BotWallet[],
-	signal: AbortSignal,
 ): Promise<void> {
-	if (bots.length < 2) return;
+	const snapshots = (
+		await Promise.all(bots.map((b) => loadBotSyncSnapshot(ctx, b)))
+	).filter((s): s is BotSyncSnapshot => s !== null);
 
-	const snapshots = await Promise.all(
-		bots.map((bot) => loadBotSnapshot(ctx, bot, signal)),
-	);
-	const donors = snapshots
-		.filter((s) => s.balance > ctx.targetUnits + ctx.rebalanceDonorReserveUnits)
-		.sort((a, b) => b.pnl - a.pnl);
-	const receivers = snapshots
-		.filter((s) => s.balance < ctx.thresholdUnits)
-		.sort((a, b) => a.pnl - b.pnl);
+	if (snapshots.length === 0) return;
 
-	if (donors.length === 0 || receivers.length === 0) return;
+	const { value: masterLamports } = await ctx.rpc
+		.getBalance(ctx.master.address)
+		.send();
+	const masterSolSpendBudget = {
+		value: BigInt(masterLamports) - ctx.masterSolReserveLamports,
+	};
 
-	for (const receiver of receivers) {
-		if (signal.aborted) return;
-		let deficit = ctx.targetUnits - receiver.balance;
-		if (deficit <= 0n) continue;
+	const plans: BotSyncPlan[] = [];
+	for (const snap of snapshots) {
+		plans.push(await buildBotSyncPlan(ctx, snap, masterSolSpendBudget));
+	}
 
-		for (const donor of donors) {
-			if (signal.aborted || deficit <= 0n) break;
-			if (donor.bot.address === receiver.bot.address) continue;
-			if (donor.pnl - receiver.pnl < ctx.rebalanceMinPnlGap) continue;
+	const plansWithWork = plans.filter((p) => p.instructions.length > 0);
+	if (plansWithWork.length === 0) return;
 
-			const minDonorBalance = ctx.targetUnits + ctx.rebalanceDonorReserveUnits;
-			const donorSlack = donor.balance - minDonorBalance;
-			if (donorSlack <= 0n) continue;
+	for (let i = 0; i < plansWithWork.length; i += MAX_BOTS_PER_TX) {
+		const chunk = plansWithWork.slice(i, i + MAX_BOTS_PER_TX);
+		await sendAndConfirmInstructions(ctx, flattenPlanInstructions(chunk));
+		logPlanBatchOutcomes(chunk);
+	}
+}
 
-			const amount = minBigInt(deficit, donorSlack, ctx.rebalanceCapUnits);
-			if (amount <= 0n) continue;
+function flattenPlanInstructions(plans: readonly BotSyncPlan[]): Instruction[] {
+	return plans.flatMap((p) => p.instructions);
+}
 
-			await transferBetweenBots(ctx, donor.bot, receiver.bot, receiver, amount);
-			donor.balance -= amount;
-			receiver.balance += amount;
-			deficit -= amount;
+function logPlanBatchOutcomes(plans: readonly BotSyncPlan[]): void {
+	for (const p of plans) {
+		if (p.movements.length > 0) {
+			trepaLog.success(`${p.bot.label}: ${p.movements.join(', ')}`);
 		}
 	}
 }
 
-async function loadBotSnapshot(
+async function sendAndConfirmInstructions(
 	ctx: FunderCtx,
-	bot: BotWallet,
-	signal: AbortSignal,
-): Promise<BotSnapshot> {
-	const [ata] = await findAssociatedTokenPda({
-		mint: ctx.mint,
-		owner: bot.address,
-		tokenProgram: TOKEN_PROGRAM_ADDRESS,
-	});
-	const [tokenAccount, stats] = await Promise.all([
-		fetchMaybeToken(ctx.rpc, ata),
-		bot.client.users.statistics(bot.userId),
-	]);
-	if (signal.aborted) {
-		throw new Error('aborted while loading bot snapshot');
-	}
-	return {
-		bot,
-		ata,
-		hasAta: tokenAccount.exists,
-		balance: tokenAccount.exists ? tokenAccount.data.amount : 0n,
-		pnl: Number.isFinite(stats.pnl) ? stats.pnl : 0,
-	};
-}
-
-async function transferBetweenBots(
-	ctx: FunderCtx,
-	donor: BotWallet,
-	receiver: BotWallet,
-	receiverSnapshot: BotSnapshot,
-	amount: bigint,
+	instructions: readonly Instruction[],
 ): Promise<void> {
-	const [donorAta] = await findAssociatedTokenPda({
-		mint: ctx.mint,
-		owner: donor.address,
-		tokenProgram: TOKEN_PROGRAM_ADDRESS,
-	});
-	const instructions: Instruction[] = [];
-
-	if (!receiverSnapshot.hasAta) {
-		instructions.push(
-			await getCreateAssociatedTokenIdempotentInstructionAsync({
-				payer: ctx.master,
-				owner: receiver.address,
-				mint: ctx.mint,
-			}),
-		);
-		receiverSnapshot.hasAta = true;
-	}
-
-	instructions.push(
-		getTransferCheckedInstruction({
-			source: donorAta,
-			mint: ctx.mint,
-			destination: receiverSnapshot.ata,
-			authority: donor.signer,
-			amount,
-			decimals: ctx.decimals,
-		}),
-	);
-
 	const { value: latestBlockhash } = await ctx.rpc.getLatestBlockhash().send();
 	const message = pipe(
 		createTransactionMessage({ version: 0 }),
 		(tx) => setTransactionMessageFeePayerSigner(ctx.master, tx),
 		(tx) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, tx),
-		(tx) => appendTransactionMessageInstructions(instructions, tx),
+		(tx) => appendTransactionMessageInstructions([...instructions], tx),
 	);
 	const signed = await signTransactionMessageWithSigners(message);
 	assertIsTransactionWithinSizeLimit(signed);
 	assertIsTransactionWithBlockhashLifetime(signed);
 	await ctx.sendAndConfirm(signed, { commitment: 'confirmed' });
-
-	trepaLog.success(
-		`rebalance ${donor.label} -> ${receiver.label}: ` +
-			`${formatBaseUnits(amount, ctx.decimals)} USDC`,
-	);
 }
 
 async function createSignerFromBase58(
@@ -468,8 +469,13 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 	});
 }
 
-function minBigInt(a: bigint, b: bigint, c: bigint): bigint {
-	return a < b ? (a < c ? a : c) : b < c ? b : c;
+function solToLamports(sol: number): bigint {
+	return BigInt(Math.round(sol * 1_000_000_000));
+}
+
+function formatSolFromLamports(lamports: bigint): string {
+	const n = Number(lamports) / 1_000_000_000;
+	return n.toLocaleString('en-US', { maximumFractionDigits: 9 });
 }
 
 function toBaseUnits(amount: number, decimals: number): bigint {
