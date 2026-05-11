@@ -1,5 +1,5 @@
-import type { components, operations } from './api/schema';
 import type { Session } from './session';
+import type { components, operations } from '../api/schema';
 
 const sign = async (
 	transaction: string,
@@ -32,7 +32,7 @@ class Resource {
 }
 
 export class AuthResource extends Resource {
-	/** Get the user behind the current session. */
+	/** Current authenticated user. */
 	async me(): Promise<Schema<'UserDto'>> {
 		return this.session.request(
 			() => this.client.GET('/auth/me'),
@@ -40,19 +40,18 @@ export class AuthResource extends Resource {
 		);
 	}
 
-	/** Manually refresh the session token (auto-handled on 401/403 anyway). */
+	/** Refresh access token. */
 	async refresh(): Promise<void> {
 		return this.session.refresh();
 	}
 
-	/** Invalidate the session server-side and clear local cookies. */
+	/** Log out and clear session cookies. */
 	async logout(): Promise<void> {
 		return this.session.logout();
 	}
 }
 
 export class UsersResource extends Resource {
-	/** Get a user profile, optionally embedding related entities. */
 	async get(
 		id: string,
 		params: Query<'UsersController_find'> = {},
@@ -64,7 +63,6 @@ export class UsersResource extends Resource {
 		);
 	}
 
-	/** List a user's predictions, with optional filters and embeds. */
 	async predictions(
 		id: string,
 		params: Query<'UsersController_findUserPredictions'> = {},
@@ -76,14 +74,12 @@ export class UsersResource extends Resource {
 		);
 	}
 
-	/** Aggregate statistics for a user (P&L, accuracy, streak counts, etc.). */
 	async statistics(id: string): Promise<Schema<'UserStatisticsDto'>> {
 		return this.session.request(() =>
 			this.client.GET('/users/{id}/statistics', { params: { path: { id } } }),
 		);
 	}
 
-	/** A user's on-chain portfolio: balances and holdings. */
 	async portfolio(userId: string): Promise<Schema<'PortfolioDto'>> {
 		return this.session.request(() =>
 			this.client.GET('/users/{user_id}/portfolio', {
@@ -92,7 +88,6 @@ export class UsersResource extends Resource {
 		);
 	}
 
-	/** A user's progress and unclaimed rewards inside a specific streak. */
 	async streakDetails(
 		id: string,
 		streakId: string,
@@ -106,7 +101,6 @@ export class UsersResource extends Resource {
 }
 
 export class PoolsResource extends Resource {
-	/** List pools matching the given filters (by streak, status, etc.). */
 	async list(
 		params: Query<'PoolsController_findMany'> = {},
 	): Promise<Schema<'PoolWithRelationsDto'>[]> {
@@ -115,7 +109,6 @@ export class PoolsResource extends Resource {
 		);
 	}
 
-	/** Get a single pool by id, with optional embeds for related entities. */
 	async get(
 		id: string,
 		params: Query<'PoolsController_find'> = {},
@@ -129,12 +122,10 @@ export class PoolsResource extends Resource {
 }
 
 export class StreaksResource extends Resource {
-	/** The Bitcoin streak: the canonical entry point for the SDK. */
 	async bitcoin(): Promise<Schema<'StreakBitcoinDto'>> {
 		return this.session.request(() => this.client.GET('/streak/bitcoin'));
 	}
 
-	/** The current and next pool inside a streak. */
 	async poolDetails(streakId: string): Promise<Schema<'StreakPoolDetailsDto'>> {
 		return this.session.request(() =>
 			this.client.GET('/streak/pool-details', {
@@ -143,7 +134,6 @@ export class StreaksResource extends Resource {
 		);
 	}
 
-	/** List pools inside a streak (paginated, ordered by reference date). */
 	async pools(
 		streakId: string,
 		params: Omit<RequiredQuery<'StreaksController_getPools'>, 'streak_id'> = {},
@@ -155,7 +145,6 @@ export class StreaksResource extends Resource {
 		);
 	}
 
-	/** The caller's progress and unclaimed rewards inside a streak. */
 	async userDetails(
 		streakId: string,
 		params: Omit<
@@ -170,10 +159,7 @@ export class StreaksResource extends Resource {
 		);
 	}
 
-	/**
-	 * Build, sign, and submit a claim-streak-reward transaction in one call.
-	 * Requires `privateKey` on the Trepa client.
-	 */
+	/** Claim streak reward (build, sign, submit). Requires client `privateKey`. */
 	async claimReward(args: {
 		streakRewardId: string;
 	}): Promise<Schema<'SubmittedClaimStreakRewardTransactionDto'>> {
@@ -201,10 +187,7 @@ export class StreaksResource extends Resource {
 }
 
 export class PredictionsResource extends Resource {
-	/**
-	 * Build, sign, and submit a prediction in one call. Requires
-	 * `privateKey` on the Trepa client.
-	 */
+	/** Create prediction (build, sign, submit). Requires client `privateKey`. */
 	async create(args: {
 		poolId: string;
 		stake: number;
@@ -236,7 +219,7 @@ export class PredictionsResource extends Resource {
 		);
 	}
 
-	/** Move the value of an existing prediction. */
+	/** Update prediction outcome (build, sign, submit). Requires client `privateKey`. */
 	async update(args: {
 		predictionId: string;
 		value: number;
@@ -263,7 +246,7 @@ export class PredictionsResource extends Resource {
 		);
 	}
 
-	/** Change the stake on an existing prediction. */
+	/** Update staked amount (build, sign, submit). Requires client `privateKey`. */
 	async updateStake(args: {
 		predictionId: string;
 		stake: number;
@@ -295,9 +278,8 @@ export class PredictionsResource extends Resource {
 
 export class RewardsResource extends Resource {
 	/**
-	 * Claim a pool reward in one call. The `poolId` is used to build the
-	 * transaction; the `rewardId` is required to submit it (the API surfaces
-	 * it on the prediction's relations; see `users.predictions(id, { includes: ['reward'] })`).
+	 * Claim a resolved pool reward (`rewardId` is often loaded via `users.predictions` embeds).
+	 * Requires client `privateKey`.
 	 */
 	async claim(args: {
 		poolId: string;
@@ -327,7 +309,7 @@ export class RewardsResource extends Resource {
 }
 
 export class WithdrawalsResource extends Resource {
-	/** Withdraw USDC from your Trepa balance to an external Solana wallet. */
+	/** On-chain withdrawal to an external wallet (build, sign, submit). Requires client `privateKey`. */
 	async create(args: {
 		toAddress: string;
 		amount: number;

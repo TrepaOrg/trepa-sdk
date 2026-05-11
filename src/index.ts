@@ -1,9 +1,9 @@
-export { ensureTrepaEnvLoaded } from './env-load';
-export { Trepa, type TrepaConfig } from './trepa';
-export { TrepaClient } from './client';
-export { TrepaError, isTrepaError } from './errors';
-export { signTransaction } from './sign';
-export { Bots, credentialsFromEnv } from './bot';
+export { ensureTrepaEnvLoaded } from './config/env-load';
+export { Trepa, type TrepaConfig } from './http/trepa';
+export { TrepaClient } from './http/client';
+export { TrepaError, isTrepaError } from './core/errors';
+export { signTransaction } from './http/sign';
+export { Bots, credentialsFromEnv, snapOutcomeToPool } from './bots';
 export type {
 	BotCredentials,
 	BotSwarmDefaults,
@@ -17,8 +17,11 @@ export type {
 	BotSubmittedPredictionContext,
 	BotSkippedInfo,
 	OpenPool,
-} from './bot';
-export { snapOutcomeToPool } from './bot';
+} from './bots';
+export {
+	type BalanceManagerConfig,
+	type BotBalanceManagerConfig,
+} from './solana/balance-manager';
 export type { components, operations, paths } from './api/schema';
 export {
 	trepaLog,
@@ -27,6 +30,10 @@ export {
 	formatError,
 	logBotSwarmStartup,
 	logBotSwarmShutdown,
+	trepaLogSlotLanesEnabled,
+	trepaBotWalletHudSubscriptionsEnabled,
 	type EventKind,
-} from './format';
-export { SDK_DOCS_URL, SDK_VERSION } from './version';
+	type TrepaLogSlot,
+} from './logging/format';
+export type { SlotWalletHudLine } from './logging/log-ink';
+export { SDK_DOCS_URL, SDK_VERSION } from './core/version';

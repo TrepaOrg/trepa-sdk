@@ -4,6 +4,10 @@ import tsPlugin from '@typescript-eslint/eslint-plugin';
 import importPlugin from 'eslint-plugin-import';
 import prettierPlugin from 'eslint-plugin-prettier';
 import eslintConfigPrettier from 'eslint-config-prettier';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default [
 	{
@@ -64,6 +68,15 @@ export default [
 			],
 			'import/first': 'error',
 			'import/newline-after-import': 'error',
+		},
+	},
+	{
+		files: ['src/**/*.ts'],
+		languageOptions: {
+			parserOptions: {
+				project: './tsconfig.json',
+				tsconfigRootDir: __dirname,
+			},
 		},
 	},
 ];

@@ -9,13 +9,8 @@ import {
 } from '@solana/kit';
 
 /**
- * Signs a base64-encoded wire-format Solana transaction returned by any
- * Trepa `create` endpoint with the given embedded-wallet private key
- * (base58-encoded 64-byte secret key) and re-encodes the signed
- * transaction back to base64.
- *
- * The result is the `signed_transaction` you send to the matching
- * `submit` endpoint together with the original `proof`.
+ * Partially signs a base64 Solana transaction from `predictions.create` (and similar) using the
+ * bot’s base58 secret (`BotCredentials.privateKey`). Returns base64 for the matching `submit` call.
  */
 export const signTransaction = async (
 	base64Transaction: string,

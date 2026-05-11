@@ -1,9 +1,8 @@
 import createClient, { type Client, type Middleware } from 'openapi-fetch';
 
-import type { paths } from './api/schema';
-import { TrepaError, errorFromResponse } from './errors';
+import type { paths } from '../api/schema';
+import { TrepaError, errorFromResponse } from '../core/errors';
 
-/** REST API origin used when {@link SessionConfig.baseUrl} is omitted. */
 export const DEFAULT_TREPA_API_BASE_URL = 'https://api.trepa.app';
 
 const AUTH_COOKIE = 'trepa-token';
@@ -36,10 +35,6 @@ const parseRetryAfterMs = (headers: Headers): number | undefined => {
 
 type PostAttempt = { error?: unknown; response: Response };
 
-/**
- * Replays POSTs that failed with rate-limit / overload statuses so swarms
- * and recoverAuth() can clear Trepa’s per-IP auth buckets without crashing.
- */
 const fetchWithTransientRetry = async (
 	fn: () => Promise<PostAttempt>,
 	maxAttempts: number,
@@ -75,17 +70,14 @@ const captureSetCookies = (response: Response, jar: CookieJar): void => {
 
 export interface SessionConfig {
 	/**
-	 * Trepa API key. When provided the SDK starts a session lazily on the
-	 * first authenticated call and refreshes it transparently on 401/403.
+	 * API key: session is created on first authenticated request; 401/403 trigger refresh when possible.
 	 */
 	apiKey?: string;
 	/**
-	 * Base58-encoded 64-byte Solana secret key for the wallet that owns the
-	 * Trepa account. Required for any method that produces a signed
-	 * transaction (predictions, rewards, withdrawals).
+	 * Base58-encoded Solana secret (64 bytes). Required for endpoints that return transactions to sign.
 	 */
 	privateKey?: string;
-	/** Override the API origin (defaults to production). */
+	/** API base URL (default: production). */
 	baseUrl?: string;
 }
 
@@ -95,12 +87,6 @@ interface FetchResult<T> {
 	response: Response;
 }
 
-/**
- * Internal HTTP core. Owns the cookie jar, the typed openapi-fetch client,
- * lazy session start, transparent token refresh, and consistent error
- * surfaces. Resource classes call `request()` and never touch cookies
- * themselves.
- */
 export class Session {
 	readonly client: Client<paths>;
 	readonly baseUrl: string;
@@ -135,11 +121,7 @@ export class Session {
 		this.client.use(cookieMiddleware);
 	}
 
-	/**
-	 * Run a typed openapi-fetch call, ensuring a session exists, retrying
-	 * once on 401/403 with a refresh, and throwing a `TrepaError` on any
-	 * non-2xx response.
-	 */
+	/** Authenticated request helper; throws {@link TrepaError} on non-2xx. */
 	async request<T>(
 		fn: () => Promise<FetchResult<T>>,
 		fallbackMessage = 'Trepa API error',
@@ -206,9 +188,7 @@ export class Session {
 		try {
 			await this.refresh();
 			return;
-		} catch {
-			/* empty */
-		}
+		} catch {}
 		if (this.apiKey) {
 			this.jar.clear();
 			this.bootstrap = undefined;

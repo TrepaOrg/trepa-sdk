@@ -13,4 +13,7 @@ export default defineConfig({
 	treeshake: true,
 	splitting: true,
 	minify: false,
+	esbuildOptions(options) {
+		options.jsx = 'automatic';
+	},
 });

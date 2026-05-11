@@ -1,22 +1,20 @@
+import { type Address, address } from '@solana/addresses';
 import {
-	type Address,
 	type Instruction,
 	type KeyPairSigner,
-	address,
 	appendTransactionMessageInstructions,
 	assertIsTransactionWithBlockhashLifetime,
 	assertIsTransactionWithinSizeLimit,
 	createKeyPairSignerFromBytes,
-	createSolanaRpc,
-	createSolanaRpcSubscriptions,
 	createTransactionMessage,
 	getBase58Encoder,
 	pipe,
-	sendAndConfirmTransactionFactory,
 	setTransactionMessageFeePayerSigner,
 	setTransactionMessageLifetimeUsingBlockhash,
 	signTransactionMessageWithSigners,
 } from '@solana/kit';
+import { createSolanaRpc } from '@solana/rpc';
+import { createSolanaRpcSubscriptions } from '@solana/rpc-subscriptions';
 import { getTransferSolInstruction } from '@solana-program/system';
 import {
 	TOKEN_PROGRAM_ADDRESS,
@@ -25,29 +23,37 @@ import {
 	getCreateAssociatedTokenIdempotentInstructionAsync,
 	getTransferCheckedInstruction,
 } from '@solana-program/token';
-import { type BotCredentials, trepaLog, Trepa } from '@trepa/sdk';
 
-const USDC_TARGET = 10;
-const USDC_THRESHOLD = 5;
+import type { BalanceManagerConfig } from './balance-manager-config';
+import type { BotCredentials } from '../bots/types';
+import { ensureTrepaEnvLoaded } from '../config/env-load';
+import type { Trepa } from '../http/trepa';
+import { trepaLog, writeEvent } from '../logging/format';
+import { sendAndConfirmTransactionFactory } from './vendor/send-and-confirm-transaction';
 
-const SOL_TARGET = 0.05;
-const SOL_THRESHOLD = 0.01;
+type SendAndConfirmSigned = ReturnType<typeof sendAndConfirmTransactionFactory>;
 
-const MASTER_SOL_RESERVE = 0.1;
-const MAX_BOTS_PER_TX = 5;
+export type {
+	BalanceManagerConfig,
+	BotBalanceManagerConfig,
+} from './balance-manager-config';
 
-const FUND_INTERVAL_MS = 60_000;
-const FUNDER_SHUTDOWN_WAIT_MS = 15_000;
+const BALANCE_MANAGER_MASTER_SOL_RESERVE_SOL = 0.05;
+const BALANCE_MANAGER_MAX_BOTS_PER_TX = 5;
+const BALANCE_MANAGER_FUND_INTERVAL_MS = 60_000;
+const BALANCE_MANAGER_SHUTDOWN_WAIT_MS = 15_000;
 
 interface BotWallet {
 	address: Address;
 	label: string;
 	signer: KeyPairSigner<string>;
+	slotIndex: number;
+	swarmCount: number;
 }
 
 interface FunderCtx {
 	rpc: ReturnType<typeof createSolanaRpc>;
-	sendAndConfirm: ReturnType<typeof sendAndConfirmTransactionFactory>;
+	sendAndConfirm: SendAndConfirmSigned;
 	master: KeyPairSigner<string>;
 	masterAta: Address;
 	mint: Address;
@@ -74,69 +80,97 @@ interface BotSyncPlan {
 	movements: string[];
 }
 
-export const withManager = async (
+interface ResolvedBalancePolicy {
+	usdcTarget: number;
+	usdcThreshold: number;
+	solTarget: number;
+	solThreshold: number;
+	masterSolReserve: number;
+	maxBotsPerTransaction: number;
+	fundIntervalMs: number;
+	shutdownWaitMs: number;
+}
+
+function resolvePolicy(config?: BalanceManagerConfig): ResolvedBalancePolicy {
+	return {
+		usdcTarget: config?.usdcTarget ?? 10,
+		usdcThreshold: config?.usdcThreshold ?? 5,
+		solTarget: config?.solTarget ?? 0.05,
+		solThreshold: config?.solThreshold ?? 0.01,
+		masterSolReserve: BALANCE_MANAGER_MASTER_SOL_RESERVE_SOL,
+		maxBotsPerTransaction: BALANCE_MANAGER_MAX_BOTS_PER_TX,
+		fundIntervalMs: BALANCE_MANAGER_FUND_INTERVAL_MS,
+		shutdownWaitMs: BALANCE_MANAGER_SHUTDOWN_WAIT_MS,
+	};
+}
+
+function resolveMasterPrivateKey(): string {
+	if (typeof process !== 'undefined' && process.env) {
+		const fromEnv = process.env.TREPA_MASTER_PRIVATE_KEY?.trim();
+		if (fromEnv) return fromEnv;
+	}
+	return '';
+}
+
+export function balanceManagerShutdownWaitMs(): number {
+	return BALANCE_MANAGER_SHUTDOWN_WAIT_MS;
+}
+
+export async function runBalanceManagerSidecar(
 	trepa: Trepa,
 	credentials: readonly BotCredentials[],
-	main: () => Promise<void>,
-): Promise<void> => {
-	const masterPrivateKey = process.env.TREPA_MASTER_PRIVATE_KEY;
-	if (!masterPrivateKey) {
-		await main();
-		return;
-	}
+	signal: AbortSignal,
+	config?: BalanceManagerConfig,
+): Promise<void> {
+	ensureTrepaEnvLoaded();
+	const masterPrivateKey = resolveMasterPrivateKey();
+	if (!masterPrivateKey) return;
 
-	const funderAbort = new AbortController();
-	const funder = runFunderLoop(
-		trepa,
-		credentials,
-		masterPrivateKey,
-		funderAbort.signal,
-	);
-
-	try {
-		await main();
-	} finally {
-		funderAbort.abort();
-		await Promise.race([
-			funder.catch(() => undefined),
-			new Promise<void>((r) => setTimeout(r, FUNDER_SHUTDOWN_WAIT_MS)),
-		]);
-	}
-};
+	const policy = resolvePolicy(config);
+	await runFunderLoop(trepa, credentials, masterPrivateKey, policy, signal);
+}
 
 async function runFunderLoop(
 	trepa: Trepa,
 	credentials: readonly BotCredentials[],
 	masterPrivateKey: string,
+	policy: ResolvedBalancePolicy,
 	signal: AbortSignal,
 ): Promise<void> {
 	let bootstrap: Awaited<ReturnType<typeof bootstrapFunder>>;
 	try {
-		bootstrap = await bootstrapFunder(trepa, credentials, masterPrivateKey);
+		bootstrap = await bootstrapFunder(
+			trepa,
+			credentials,
+			masterPrivateKey,
+			policy,
+		);
 	} catch (err) {
-		trepaLog.error(`bootstrap failed — ${describeError(err)}`);
+		trepaLog.error(`bootstrap failed — ${describeChainedError(err)}`);
 		return;
 	}
 
 	const { ctx, bots } = bootstrap;
-
-	trepaLog.ready(
-		`master ${shortAddr(ctx.master.address)} syncing ${bots.length} ` +
-			`bot${bots.length === 1 ? '' : 's'} to ` +
-			`${USDC_TARGET} USDC (fill below ${USDC_THRESHOLD}) and ` +
-			`${SOL_TARGET} SOL (fill below ${SOL_THRESHOLD}) ` +
-			`(master SOL reserve ${MASTER_SOL_RESERVE}; up to ` +
-			`${MAX_BOTS_PER_TX} bots per tx)`,
+	const n = bots.length;
+	writeEvent(
+		'ready',
+		`master ${shortAddr(ctx.master.address)} syncing ${n} ` +
+			`bot${n === 1 ? '' : 's'} to ` +
+			`${policy.usdcTarget} USDC (fill below ${policy.usdcThreshold}) and ` +
+			`${policy.solTarget} SOL (fill below ${policy.solThreshold}) ` +
+			`(master SOL reserve ${policy.masterSolReserve}; up to ` +
+			`${policy.maxBotsPerTransaction} bots per tx)`,
+		{ index: 0, count: Math.max(1, n) },
 	);
 
 	while (!signal.aborted) {
 		if (signal.aborted) return;
 		try {
-			await syncAllBotsBundled(ctx, bots);
+			await syncAllBotsBundled(ctx, bots, policy.maxBotsPerTransaction);
 		} catch (err) {
-			trepaLog.error(`bundled sync failed — ${describeError(err)}`);
+			trepaLog.error(`bundled sync failed — ${describeChainedError(err)}`);
 		}
-		await sleep(FUND_INTERVAL_MS, signal);
+		await sleep(policy.fundIntervalMs, signal);
 	}
 }
 
@@ -144,6 +178,7 @@ async function bootstrapFunder(
 	trepa: Trepa,
 	credentials: readonly BotCredentials[],
 	masterPrivateKey: string,
+	policy: ResolvedBalancePolicy,
 ): Promise<{ ctx: FunderCtx; bots: BotWallet[] }> {
 	const [master, ...botSigners] = await Promise.all([
 		createSignerFromBase58(masterPrivateKey),
@@ -160,17 +195,17 @@ async function bootstrapFunder(
 		rpcSubscriptions,
 	});
 
-	const targetUnits = toBaseUnits(USDC_TARGET, decimals);
-	let thresholdUnits = toBaseUnits(USDC_THRESHOLD, decimals);
+	const targetUnits = toBaseUnits(policy.usdcTarget, decimals);
+	let thresholdUnits = toBaseUnits(policy.usdcThreshold, decimals);
 	if (thresholdUnits > targetUnits) {
 		thresholdUnits = targetUnits;
 		trepaLog.info(
-			'USDC_THRESHOLD exceeds USDC_TARGET — using target as the fill threshold.',
+			'USDC threshold exceeds USDC target — using target as the fill threshold.',
 		);
 	}
 
-	const solTargetLamports = solToLamports(SOL_TARGET);
-	const masterSolReserveLamports = solToLamports(MASTER_SOL_RESERVE);
+	const solTargetLamports = solToLamports(policy.solTarget);
+	const masterSolReserveLamports = solToLamports(policy.masterSolReserve);
 	const rentExemptLamports = await rpc
 		.getMinimumBalanceForRentExemption(0n)
 		.send();
@@ -178,11 +213,11 @@ async function bootstrapFunder(
 		solTargetLamports > rentExemptLamports
 			? solTargetLamports
 			: rentExemptLamports;
-	let solThresholdLamports = solToLamports(SOL_THRESHOLD);
+	let solThresholdLamports = solToLamports(policy.solThreshold);
 	if (solThresholdLamports > solFloorLamports) {
 		solThresholdLamports = solFloorLamports;
 		trepaLog.info(
-			'SOL_THRESHOLD is above the enforced SOL floor — clamping threshold to that floor.',
+			'SOL threshold is above the enforced SOL floor — clamping threshold to that floor.',
 		);
 	}
 
@@ -206,11 +241,13 @@ async function bootstrapFunder(
 		label:
 			credentials.length > 1 ? `bot ${i + 1}/${credentials.length}` : 'bot',
 		signer: s,
+		slotIndex: i,
+		swarmCount: credentials.length,
 	}));
 
 	if (solTargetLamports < rentExemptLamports) {
 		trepaLog.info(
-			`SOL_TARGET is below rent-exempt minimum for an empty wallet ` +
+			`SOL target is below rent-exempt minimum for an empty wallet ` +
 				`(${formatSolFromLamports(rentExemptLamports)} SOL); bots use that floor.`,
 		);
 	}
@@ -240,8 +277,9 @@ async function fetchStakeMint(
 	const firstPool = (await trepa.pools.list({ limit: 1 }))[0];
 	if (!firstPool) {
 		throw new Error(
-			'no pools listed — cannot resolve stake mint. Unset ' +
-				'TREPA_MASTER_PRIVATE_KEY or wait until a pool exists.',
+			'no pools listed — cannot resolve stake mint. Omit master funding ' +
+				'(no TREPA_MASTER_PRIVATE_KEY) ' +
+				'or wait until a pool exists.',
 		);
 	}
 	return {
@@ -379,6 +417,7 @@ async function buildBotSyncPlan(
 async function syncAllBotsBundled(
 	ctx: FunderCtx,
 	bots: readonly BotWallet[],
+	maxBotsPerTransaction: number,
 ): Promise<void> {
 	const snapshots = (
 		await Promise.all(bots.map((b) => loadBotSyncSnapshot(ctx, b)))
@@ -401,8 +440,8 @@ async function syncAllBotsBundled(
 	const plansWithWork = plans.filter((p) => p.instructions.length > 0);
 	if (plansWithWork.length === 0) return;
 
-	for (let i = 0; i < plansWithWork.length; i += MAX_BOTS_PER_TX) {
-		const chunk = plansWithWork.slice(i, i + MAX_BOTS_PER_TX);
+	for (let i = 0; i < plansWithWork.length; i += maxBotsPerTransaction) {
+		const chunk = plansWithWork.slice(i, i + maxBotsPerTransaction);
 		await sendAndConfirmInstructions(ctx, flattenPlanInstructions(chunk));
 		logPlanBatchOutcomes(chunk);
 	}
@@ -415,7 +454,10 @@ function flattenPlanInstructions(plans: readonly BotSyncPlan[]): Instruction[] {
 function logPlanBatchOutcomes(plans: readonly BotSyncPlan[]): void {
 	for (const p of plans) {
 		if (p.movements.length > 0) {
-			trepaLog.success(`${p.bot.label}: ${p.movements.join(', ')}`);
+			writeEvent('fund', `${p.bot.label}: ${p.movements.join(', ')}`, {
+				index: p.bot.slotIndex,
+				count: Math.max(1, p.bot.swarmCount),
+			});
 		}
 	}
 }
@@ -444,7 +486,7 @@ async function createSignerFromBase58(
 	return createKeyPairSignerFromBytes(bytes as Uint8Array);
 }
 
-function describeError(err: unknown): string {
+function describeChainedError(err: unknown): string {
 	if (!(err instanceof Error)) return String(err);
 	const parts: string[] = [];
 	let e: unknown = err;
