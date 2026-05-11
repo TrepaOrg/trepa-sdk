@@ -204,6 +204,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/pools/resolution/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview resolution for a pool
+         * @description Previews the outcome and reward split for a pool whose reference time has passed. Requires an authenticated session.
+         */
+        get: operations["PoolsController_previewResolution"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/pools/{id}": {
         parameters: {
             query?: never;
@@ -472,7 +492,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get the Bitcoin streak
+         * Get the Bitcoin flash streak
          * @description Returns the streak that powers the Bitcoin Flash product.
          */
         get: operations["StreaksController_getBitcoinStreak"];
@@ -602,6 +622,7 @@ export interface components {
             result: number;
             median?: number | null;
             protocol_fee: number;
+            leftover: number;
         };
         NotificationPreferencesDto: {
             /** @default true */
@@ -734,6 +755,7 @@ export interface components {
             id: string;
             streak_accumulator_account: string;
             title: string;
+            /** @example 5 */
             fee_percentage: number;
             bump: number;
             streak_count_required: number;
@@ -758,6 +780,8 @@ export interface components {
             stake_token_mint: string;
             stake: number;
             decimals: number;
+            last_applied_value_revision: number;
+            last_applied_stake_revision: number;
             is_fee_payer: boolean;
             is_closed: boolean;
             bump: number;
@@ -799,6 +823,8 @@ export interface components {
             reference_date: string;
             status: components["schemas"]["PoolStatus"];
             is_closed: boolean;
+            platform_fee_rate?: number | null;
+            indexed_prediction_update_count: number;
             readonly is_resolved?: boolean | null;
             readonly total_volume?: number | null;
             user?: components["schemas"]["UserDto"];
@@ -951,6 +977,7 @@ export interface components {
             updated_at: string;
             streak_accumulator_account: string;
             title: string;
+            /** @example 5 */
             fee_percentage: number;
             bump: number;
             streak_count_required: number;
@@ -1227,11 +1254,12 @@ export interface components {
             pools: components["schemas"]["PoolWithRelationsDto"][];
         };
         UpdateStreakFeePercentageDto: {
-            /** @example 500 */
+            /** @example 5 */
             fee_percentage: number;
         };
         UpdateStreakFeePercentageResponseDto: {
             signature: string;
+            /** @example 5 */
             fee_percentage: number;
         };
         StreakTopUpResponseDto: {
@@ -1241,6 +1269,7 @@ export interface components {
         };
         CreateStreakDto: {
             title: string;
+            /** @example 5 */
             fee_percentage: number;
             streak_count_required: number;
             min_precision_score_required: number;
@@ -1607,6 +1636,36 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["PoolWithRelationsDto"][];
                 };
+            };
+        };
+    };
+    PoolsController_previewResolution: {
+        parameters: {
+            query: {
+                /** @description Pool UUID */
+                pool_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description When rewards cannot be ranked, `refunds` lists participants and `winners`/`losers` are empty. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResolutionPreviewDto"];
+                };
+            };
+            /** @description Pool not found, or its reference time has not passed yet. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
