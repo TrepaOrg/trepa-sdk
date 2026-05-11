@@ -22,17 +22,49 @@ import {
 	logBotSwarmShutdown,
 	logBotSwarmStartup,
 	trepaStdoutIsInteractive,
+	writeSwarmSlotStaggerNotice,
 } from '../logging/format';
+import { setTrepaInkAbortOnExit } from '../logging/log-ink';
 import {
 	balanceManagerShutdownWaitMs,
 	type BalanceManagerConfig,
 	runBalanceManagerSidecar,
 } from '../solana/balance-manager';
 
-const staggerFirstRequest = (ms: number): Promise<void> =>
-	new Promise((resolve) => {
-		setTimeout(resolve, ms);
+const staggerFirstRequest = (
+	ms: number,
+	signal: AbortSignal,
+): Promise<void> => {
+	if (ms <= 0) return Promise.resolve();
+	return new Promise((resolve, reject) => {
+		if (signal.aborted) {
+			reject(abortErrorFromSignal(signal));
+			return;
+		}
+		const timer = setTimeout(() => {
+			signal.removeEventListener('abort', onAbort);
+			resolve();
+		}, ms);
+		const onAbort = (): void => {
+			clearTimeout(timer);
+			signal.removeEventListener('abort', onAbort);
+			reject(abortErrorFromSignal(signal));
+		};
+		signal.addEventListener('abort', onAbort, { once: true });
 	});
+};
+
+function abortErrorFromSignal(signal: AbortSignal): Error {
+	const r = signal.reason;
+	if (r instanceof Error) return r;
+	if (r !== undefined) return new DOMException(String(r), 'AbortError');
+	return new DOMException('Aborted', 'AbortError');
+}
+
+function isLikelyAbortError(err: unknown): boolean {
+	if (err instanceof DOMException && err.name === 'AbortError') return true;
+	return err instanceof Error && err.name === 'AbortError';
+}
 
 const sleepMs = (ms: number): Promise<void> =>
 	new Promise((resolve) => {
@@ -105,11 +137,6 @@ export class Bots {
 		}
 
 		ensureTrepaEnvLoaded();
-		logBotSwarmStartup({
-			credentialCount: count,
-			apiBaseUrl: this.sessionDefaults.baseUrl,
-		});
-
 		const factory: (slot: BotSlot) => BotOptions =
 			typeof strategy === 'function' ? strategy : () => strategy;
 
@@ -119,14 +146,39 @@ export class Bots {
 		);
 
 		const swarmAc = new AbortController();
+		const balanceManagerAc = new AbortController();
 		const proc =
 			typeof process !== 'undefined' && typeof process.on === 'function'
 				? process
 				: null;
-		const handler = (): void => swarmAc.abort();
-		for (const sig of SHUTDOWN_SIGNALS) proc?.on(sig, handler);
+		const interrupt = (): void => {
+			if (swarmAc.signal.aborted) {
+				if (
+					typeof process !== 'undefined' &&
+					typeof process.exit === 'function'
+				) {
+					process.exit(130);
+				}
+				return;
+			}
+			swarmAc.abort();
+			balanceManagerAc.abort();
+		};
+		for (const sig of SHUTDOWN_SIGNALS) proc?.on(sig, interrupt);
+		setTrepaInkAbortOnExit(interrupt);
 
-		const balanceManagerAc = new AbortController();
+		logBotSwarmStartup({
+			credentialCount: count,
+			apiBaseUrl: this.sessionDefaults.baseUrl,
+		});
+		if (trepaStdoutIsInteractive() && count > 1 && this.sessionStaggerMs > 0) {
+			for (let i = 1; i < count; i++) {
+				writeSwarmSlotStaggerNotice(
+					{ index: i, count },
+					this.sessionStaggerMs * i,
+				);
+			}
+		}
 		const balanceManagerTask =
 			this.trepaForBalanceManager !== undefined
 				? runBalanceManagerSidecar(
@@ -142,29 +194,41 @@ export class Bots {
 				this.credentials.map(async (creds, index) => {
 					const slot: BotSlot = { index, count };
 					if (this.sessionStaggerMs > 0 && index > 0) {
-						await staggerFirstRequest(this.sessionStaggerMs * index);
+						await staggerFirstRequest(
+							this.sessionStaggerMs * index,
+							swarmAc.signal,
+						);
 					}
-					const session = new Session({ ...this.sessionDefaults, ...creds });
-					const client = new TrepaClient(session);
 					const opts = withTag(slot, factory(slot));
 					const signal = opts.signal
 						? AbortSignal.any([swarmAc.signal, opts.signal])
 						: swarmAc.signal;
+					const session = new Session({
+						...this.sessionDefaults,
+						...creds,
+						signal,
+					});
+					const client = new TrepaClient(session);
 					try {
 						await runPredictorLoop(slot, client, opts, signal, {
 							rpcUrl: this.walletHudRpcUrl,
 							wsUrl: this.walletHudWsUrl,
 						});
 					} finally {
-						try {
-							await client.logout();
-						} catch (err) {
-							emit('error', lineForError(opts, err, slot), slot);
+						if (!swarmAc.signal.aborted) {
+							try {
+								await client.logout();
+							} catch (err) {
+								emit('error', lineForError(opts, err, slot), slot);
+							}
 						}
 					}
 				}),
 			);
+		} catch (err) {
+			if (!swarmAc.signal.aborted && !isLikelyAbortError(err)) throw err;
 		} finally {
+			setTrepaInkAbortOnExit(undefined);
 			balanceManagerAc.abort();
 			if (this.trepaForBalanceManager !== undefined) {
 				await Promise.race([
@@ -172,7 +236,7 @@ export class Bots {
 					sleepMs(balanceManagerShutdownWaitMs()),
 				]);
 			}
-			for (const sig of SHUTDOWN_SIGNALS) proc?.off(sig, handler);
+			for (const sig of SHUTDOWN_SIGNALS) proc?.off(sig, interrupt);
 			logBotSwarmShutdown({ credentialCount: count });
 		}
 	}

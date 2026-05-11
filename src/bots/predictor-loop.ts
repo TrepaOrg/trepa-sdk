@@ -56,13 +56,10 @@ export async function runPredictorLoop(
 	signal: AbortSignal,
 	walletHud: { rpcUrl: string; wsUrl: string },
 ): Promise<void> {
+	if (signal.aborted) return;
 	const authStarted = Date.now();
 	const me = await client.auth.me();
-	const streakId = (await client.streaks.bitcoin()).id;
-	const authMs = Date.now() - authStarted;
-	const publicCtx: BotContext = { slot, me, trepa: client, signal };
-	emit('ready', lineForReady(options, publicCtx, slot, authMs), slot);
-
+	if (signal.aborted) return;
 	if (trepaStdoutIsInteractive()) {
 		startBotWalletHudMirror({
 			client,
@@ -73,6 +70,10 @@ export async function runPredictorLoop(
 			signal,
 		});
 	}
+	const streakId = (await client.streaks.bitcoin()).id;
+	const authMs = Date.now() - authStarted;
+	const publicCtx: BotContext = { slot, me, trepa: client, signal };
+	emit('ready', lineForReady(options, publicCtx, slot, authMs), slot);
 
 	const ctx: MachineCtx = {
 		client,

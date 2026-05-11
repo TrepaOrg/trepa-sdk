@@ -28,8 +28,14 @@ import type { BalanceManagerConfig } from './balance-manager-config';
 import type { BotCredentials } from '../bots/types';
 import { ensureTrepaEnvLoaded } from '../config/env-load';
 import type { Trepa } from '../http/trepa';
-import { trepaLog, writeEvent, writeSwarmMetaLine } from '../logging/format';
+import {
+	trepaLog,
+	trepaStdoutIsInteractive,
+	writeEvent,
+	writeSwarmMetaLine,
+} from '../logging/format';
 import { sendAndConfirmTransactionFactory } from './vendor/send-and-confirm-transaction';
+import { startMasterWalletHudMirror } from './wallet-hud';
 
 type SendAndConfirmSigned = ReturnType<typeof sendAndConfirmTransactionFactory>;
 
@@ -152,13 +158,34 @@ async function runFunderLoop(
 
 	const { ctx, bots } = bootstrap;
 	const n = bots.length;
+	if (trepaStdoutIsInteractive()) {
+		startMasterWalletHudMirror({
+			shortAddr: shortAddr(ctx.master.address),
+			wallet: ctx.master.address,
+			stakeDecimals: ctx.decimals,
+			masterAta: ctx.masterAta,
+			rpcUrl: trepa.solanaRpcUrl,
+			wsUrl: trepa.solanaRpcSubscriptionsUrl,
+			signal,
+		});
+	}
 	writeSwarmMetaLine(
-		`master ${shortAddr(ctx.master.address)} syncing ${n} ` +
-			`bot${n === 1 ? '' : 's'} to ` +
-			`${policy.usdcTarget} USDC (fill below ${policy.usdcThreshold}) and ` +
-			`${policy.solTarget} SOL (fill below ${policy.solThreshold}) ` +
-			`(master SOL reserve ${policy.masterSolReserve}; up to ` +
-			`${policy.maxBotsPerTransaction} bots per tx)`,
+		`Master ${shortAddr(ctx.master.address)} — keeps ${n} bot wallet` +
+			`${n === 1 ? '' : 's'} topped up automatically.`,
+	);
+	writeSwarmMetaLine(
+		`Each bot should hold about ${policy.usdcTarget} USDC and ` +
+			`${policy.solTarget} SOL. We send more when it falls under ` +
+			`${policy.usdcThreshold} USDC or ${policy.solThreshold} SOL.`,
+	);
+	writeSwarmMetaLine(
+		`We never spend the last ${policy.masterSolReserve} SOL on the master ` +
+			`(that stays for fees). Up to ${policy.maxBotsPerTransaction} bot` +
+			`${policy.maxBotsPerTransaction === 1 ? '' : 's'} funded in one transaction.`,
+	);
+	writeSwarmMetaLine(
+		`When a bot is above those targets, surplus USDC and SOL are swept back ` +
+			`to the master — profits return to the funding wallet.`,
 	);
 
 	while (!signal.aborted) {

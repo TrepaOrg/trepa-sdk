@@ -32,7 +32,6 @@ interface SlotLine {
 	text: string;
 }
 
-/** One swarm column’s wallet line in the Ink HUD. */
 export interface SlotWalletHudLine {
 	username: string;
 	sol: string;
@@ -44,16 +43,23 @@ interface SwarmMetaLine {
 	text: string;
 }
 
+export interface MasterWalletHudLine {
+	shortAddr: string;
+	sol: string;
+	usdc: string;
+}
+
 interface InkSnapshot {
 	layout: InkLayoutMode;
 	botCount: number;
 	globalLines: readonly GlobalLine[];
 	swarmMetaLines: readonly SwarmMetaLine[];
+	masterWalletHud: MasterWalletHudLine | null;
 	slotLines: readonly (readonly SlotLine[])[];
 	slotHud: readonly SlotWalletHudLine[];
 }
 
-const MAX_SWARM_META_LINES = 3;
+const MAX_SWARM_META_LINES = 4;
 
 const MAX_GLOBAL = 7;
 
@@ -96,6 +102,7 @@ let snapshot: InkSnapshot = {
 	botCount: 1,
 	globalLines: [],
 	swarmMetaLines: [],
+	masterWalletHud: null,
 	slotLines: [],
 	slotHud: [],
 };
@@ -121,6 +128,31 @@ function getServerSnapshot(): InkSnapshot {
 
 let inkInstance: ReturnType<typeof render> | null = null;
 
+let inkAbortOnExit: (() => void) | undefined;
+
+export function setTrepaInkAbortOnExit(fn: (() => void) | undefined): void {
+	inkAbortOnExit = fn;
+}
+
+function resetInkSnapshot(): void {
+	snapshot = {
+		layout: 'global',
+		botCount: 1,
+		globalLines: [],
+		swarmMetaLines: [],
+		masterWalletHud: null,
+		slotLines: [],
+		slotHud: [],
+	};
+	listeners.clear();
+}
+
+function detachInkIfCurrent(inst: ReturnType<typeof render>): void {
+	if (inkInstance !== inst) return;
+	inkInstance = null;
+	resetInkSnapshot();
+}
+
 export function isInkMounted(): boolean {
 	return inkInstance !== null;
 }
@@ -131,7 +163,16 @@ export function inkLayoutIsSwarm(): boolean {
 
 export function mountInkIfNeeded(): void {
 	if (inkInstance !== null) return;
-	inkInstance = render(<TrepaInkRoot />);
+	const inst = render(<TrepaInkRoot />);
+	inkInstance = inst;
+	void inst.waitUntilExit().then(() => {
+		try {
+			inkAbortOnExit?.();
+		} catch {
+			/* ignore */
+		}
+		detachInkIfCurrent(inst);
+	});
 }
 
 export function setInkSwarmLayout(botCount: number): void {
@@ -162,6 +203,30 @@ export function patchSlotWalletHud(
 		i === slotIndex ? { ...line, ...patch } : line,
 	);
 	snapshot = { ...snapshot, slotHud: hud };
+	notify();
+}
+
+export function initMasterWalletHud(shortAddr: string): void {
+	snapshot = {
+		...snapshot,
+		masterWalletHud: {
+			shortAddr,
+			sol: '—',
+			usdc: '—',
+		},
+	};
+	notify();
+}
+
+export function patchMasterWalletHud(
+	patch: Partial<MasterWalletHudLine>,
+): void {
+	const cur = snapshot.masterWalletHud;
+	if (!cur) return;
+	snapshot = {
+		...snapshot,
+		masterWalletHud: { ...cur, ...patch },
+	};
 	notify();
 }
 
@@ -209,17 +274,9 @@ export function pushInkSlotLine(
 
 export function unmountInk(): void {
 	if (!inkInstance) return;
-	inkInstance.unmount();
-	inkInstance = null;
-	snapshot = {
-		layout: 'global',
-		botCount: 1,
-		globalLines: [],
-		swarmMetaLines: [],
-		slotLines: [],
-		slotHud: [],
-	};
-	listeners.clear();
+	const inst = inkInstance;
+	inst.unmount();
+	detachInkIfCurrent(inst);
 }
 
 function levelColor(level: GlobalLevel): string | undefined {
@@ -362,23 +419,57 @@ function GlobalLineView({
 }
 
 function SwarmMetaStrip({
+	master,
 	lines,
 	width,
 }: {
+	master: MasterWalletHudLine | null;
 	lines: readonly SwarmMetaLine[];
 	width: number;
 }): React.ReactElement | null {
-	if (lines.length === 0) return null;
+	if (!master && lines.length === 0) return null;
 	return (
 		<Box
 			flexShrink={0}
 			flexDirection="column"
 			width={width}
-			borderStyle="single"
+			borderStyle="double"
 			borderColor="cyan"
 			paddingX={1}
 			marginBottom={1}
 		>
+			{master ? (
+				<Box flexDirection="column" flexShrink={0}>
+					<Box height={1} overflow="hidden">
+						<Text bold color="cyan" wrap="truncate-end">
+							Master {master.shortAddr}
+						</Text>
+					</Box>
+					<Box height={1} overflow="hidden">
+						<Text dimColor wrap="truncate-end">
+							{master.sol}
+						</Text>
+					</Box>
+					<Box height={1} overflow="hidden">
+						<Text dimColor wrap="truncate-end">
+							{master.usdc}
+						</Text>
+					</Box>
+					{lines.length > 0 ? (
+						<Box
+							flexShrink={0}
+							width="100%"
+							height={1}
+							overflow="hidden"
+							marginTop={0}
+						>
+							<Text dimColor wrap="truncate-end">
+								{'\u2500'.repeat(512)}
+							</Text>
+						</Box>
+					) : null}
+				</Box>
+			) : null}
 			{lines.map((line) => (
 				<Box key={line.id} flexShrink={0}>
 					<Text color="cyan" wrap="wrap">
@@ -445,6 +536,17 @@ function SlotColumn({
 						{hud.usdc}
 					</Text>
 				</Box>
+			</Box>
+			<Box
+				flexShrink={0}
+				width="100%"
+				paddingX={1}
+				height={1}
+				overflow="hidden"
+			>
+				<Text dimColor wrap="truncate-end">
+					{'\u2500'.repeat(512)}
+				</Text>
 			</Box>
 			<Box
 				flexGrow={1}
@@ -565,7 +667,11 @@ function TrepaInkRoot(): React.ReactElement {
 				</Box>
 			</Box>
 
-			<SwarmMetaStrip lines={s.swarmMetaLines} width={cols} />
+			<SwarmMetaStrip
+				master={s.masterWalletHud}
+				lines={s.swarmMetaLines}
+				width={cols}
+			/>
 
 			<Box
 				flexGrow={1}

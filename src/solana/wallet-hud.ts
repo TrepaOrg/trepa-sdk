@@ -1,4 +1,4 @@
-import { address } from '@solana/addresses';
+import { address, type Address } from '@solana/addresses';
 import { createSolanaRpc } from '@solana/rpc';
 import { createSolanaRpcSubscriptions } from '@solana/rpc-subscriptions';
 import type {
@@ -16,7 +16,11 @@ import {
 import type { components } from '../api/schema';
 import type { TrepaClient } from '../http/client';
 import { formatNumber } from '../logging/format';
-import { patchSlotWalletHud } from '../logging/log-ink';
+import {
+	initMasterWalletHud,
+	patchMasterWalletHud,
+	patchSlotWalletHud,
+} from '../logging/log-ink';
 import { createAsyncGeneratorWithInitialValueAndSlotTracking } from './vendor/create-async-generator-with-initial-value-and-slot-tracking';
 
 type UserDto = components['schemas']['UserDto'];
@@ -82,7 +86,9 @@ async function runBotWalletHudMirror(opts: {
 	wsUrl: string;
 	signal: AbortSignal;
 }): Promise<void> {
-	patchSlotWalletHud(opts.slotIndex, { username: opts.me.username });
+	patchSlotWalletHud(opts.slotIndex, {
+		username: (opts.me.username ?? '').trim(),
+	});
 
 	const wallet = address(opts.me.wallet_address);
 	const rpc = createSolanaRpc(opts.rpcUrl);
@@ -165,6 +171,102 @@ async function runBotWalletHudMirror(opts: {
 		try {
 			for await (const st of usdcPipe) {
 				patchSlotWalletHud(opts.slotIndex, {
+					usdc: `${st.value} USDC`,
+				});
+			}
+		} catch {}
+	})();
+}
+
+export function startMasterWalletHudMirror(opts: {
+	shortAddr: string;
+	wallet: Address;
+	stakeDecimals: number;
+	masterAta: Address;
+	rpcUrl: string;
+	wsUrl: string;
+	signal: AbortSignal;
+}): void {
+	initMasterWalletHud(opts.shortAddr);
+	void runMasterWalletHudMirror({
+		wallet: opts.wallet,
+		stakeDecimals: opts.stakeDecimals,
+		masterAta: opts.masterAta,
+		rpcUrl: opts.rpcUrl,
+		wsUrl: opts.wsUrl,
+		signal: opts.signal,
+	}).catch(() => undefined);
+}
+
+async function runMasterWalletHudMirror(opts: {
+	wallet: Address;
+	stakeDecimals: number;
+	masterAta: Address;
+	rpcUrl: string;
+	wsUrl: string;
+	signal: AbortSignal;
+}): Promise<void> {
+	const rpc = createSolanaRpc(opts.rpcUrl);
+	const subs = createSolanaRpcSubscriptions(opts.wsUrl);
+	const wallet = opts.wallet;
+	const ata = opts.masterAta;
+
+	const solPipe = createAsyncGeneratorWithInitialValueAndSlotTracking<
+		Lamports,
+		{ lamports: Lamports },
+		Lamports
+	>({
+		abortSignal: opts.signal,
+		rpcRequest: rpc.getBalance(wallet, { commitment: 'confirmed' }),
+		rpcValueMapper: (v: Lamports) => v,
+		rpcSubscriptionRequest: subs.accountNotifications(wallet, {
+			commitment: 'confirmed',
+		}),
+		rpcSubscriptionValueMapper: (a: { lamports: Lamports }) => a.lamports,
+	});
+	void (async () => {
+		try {
+			for await (const st of solPipe) {
+				patchMasterWalletHud({
+					sol: formatSolLamports(st.value),
+				});
+			}
+		} catch {}
+	})();
+
+	try {
+		const token = await fetchMaybeToken(rpc, ata, {
+			commitment: 'confirmed',
+		});
+		const ui = token.exists
+			? formatStakeBaseUnits(token.data.amount, opts.stakeDecimals)
+			: '0';
+		patchMasterWalletHud({ usdc: `${ui} USDC` });
+	} catch {}
+
+	const usdcPipe = createAsyncGeneratorWithInitialValueAndSlotTracking<
+		JsonParsedSplAccount | null,
+		JsonParsedSplAccount | null,
+		string
+	>({
+		abortSignal: opts.signal,
+		rpcRequest: rpc.getAccountInfo(ata, {
+			encoding: 'jsonParsed',
+			commitment: 'confirmed',
+		}),
+		rpcValueMapper: (info: JsonParsedSplAccount | null) =>
+			stakeUiFromJsonParsedAccountInfo(info),
+		rpcSubscriptionRequest: subs.accountNotifications(ata, {
+			encoding: 'jsonParsed',
+			commitment: 'confirmed',
+		}),
+		rpcSubscriptionValueMapper: (info: JsonParsedSplAccount | null) =>
+			stakeUiFromJsonParsedAccountInfo(info),
+	});
+	void (async () => {
+		try {
+			for await (const st of usdcPipe) {
+				patchMasterWalletHud({
 					usdc: `${st.value} USDC`,
 				});
 			}

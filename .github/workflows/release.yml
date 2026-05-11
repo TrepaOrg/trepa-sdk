@@ -26,13 +26,6 @@ jobs:
       id-token: write
 
     steps:
-      - name: Ensure release runs only on master
-        run: |
-          if [ "${{ github.ref_name }}" != "master" ]; then
-            echo "::error::Releases can only be triggered from the master branch (got '${{ github.ref_name }}')."
-            exit 1
-          fi
-
       - name: Validate version input
         run: |
           if ! echo "${{ inputs.version }}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then

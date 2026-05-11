@@ -33,5 +33,5 @@ export {
 	type EventKind,
 	type TrepaLogSlot,
 } from './logging/format';
-export type { SlotWalletHudLine } from './logging/log-ink';
+export type { MasterWalletHudLine, SlotWalletHudLine } from './logging/log-ink';
 export { SDK_DOCS_URL, SDK_VERSION } from './core/version';

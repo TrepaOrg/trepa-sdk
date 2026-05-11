@@ -67,6 +67,27 @@ export function writeSwarmMetaLine(message: string): void {
 	pushInkGlobal('log', t);
 }
 
+function formatStaggerDelay(ms: number): string {
+	if (ms < 1000) return `${ms}ms`;
+	const s = ms / 1000;
+	return Number.isInteger(s) ? `${s}s` : `${s.toFixed(1)}s`;
+}
+
+/** Fills staggered swarm columns so idle time does not look like a broken UI. */
+export function writeSwarmSlotStaggerNotice(
+	slot: TrepaLogSlot,
+	delayMs: number,
+): void {
+	if (usePlainLogs || delayMs <= 0) return;
+	mountInkIfNeeded();
+	if (!isInkMounted() || !inkLayoutIsSwarm()) return;
+	pushInkSlotLine(
+		slot,
+		'skip',
+		`Login starts in ${formatStaggerDelay(delayMs)} (staggered)`,
+	);
+}
+
 /** Structured logger: Ink when stdout is a TTY, otherwise `console`. */
 export const trepaLog = {
 	log: (msg: string): void => dispatchGlobal('log', msg),
@@ -99,17 +120,14 @@ export function logBotSwarmStartup(opts: {
 
 	mountInkIfNeeded();
 	setInkSwarmLayout(n);
-	pushInkGlobal(
-		'log',
-		`${leadSymbol} @trepa/sdk v${SDK_VERSION}`,
-	);
+	pushInkGlobal('log', `${leadSymbol} @trepa/sdk v${SDK_VERSION}`);
 	pushInkGlobal('log', `- Docs: ${SDK_DOCS_URL}`);
 	pushInkGlobal('log', `- API: ${api}`);
 	pushInkGlobal(
 		'log',
 		`- Credentials: ${n} loaded (${n === 1 ? 'single bot' : `${n}-bot swarm`})`,
 	);
-	trepaLog.start('Starting predictor loop…');
+	trepaLog.log('Starting predictor loop…');
 }
 
 /** Tears down Ink after a swarm run; always logs "Predictor loop stopped". */
