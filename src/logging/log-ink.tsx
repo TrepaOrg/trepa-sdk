@@ -182,7 +182,10 @@ export function setInkSwarmLayout(botCount: number): void {
 		layout: 'swarm',
 		botCount: n,
 		slotLines: Array.from({ length: n }, (_, i) => snapshot.slotLines[i] ?? []),
-		slotHud: Array.from({ length: n }, (_, i) => snapshot.slotHud[i] ?? emptyHudLine()),
+		slotHud: Array.from(
+			{ length: n },
+			(_, i) => snapshot.slotHud[i] ?? emptyHudLine(),
+		),
 	};
 	notify();
 }
@@ -196,8 +199,9 @@ export function patchSlotWalletHud(
 		snapshot.botCount,
 		snapshot.slotHud.length,
 	);
-	const padded = Array.from({ length: minLen }, (_, i) =>
-		snapshot.slotHud[i] ?? emptyHudLine(),
+	const padded = Array.from(
+		{ length: minLen },
+		(_, i) => snapshot.slotHud[i] ?? emptyHudLine(),
 	);
 	const hud = padded.map((line, i) =>
 		i === slotIndex ? { ...line, ...patch } : line,
@@ -493,8 +497,7 @@ function SlotColumn({
 	hud: SlotWalletHudLine;
 }): React.ReactElement {
 	const titleColor = BOT_COLORS[slotIndex % BOT_COLORS.length];
-	const nameLine =
-		hud.username === '' ? '@—' : `@${hud.username}`;
+	const nameLine = hud.username === '' ? '@—' : `@${hud.username}`;
 	return (
 		<Box
 			flexGrow={1}
