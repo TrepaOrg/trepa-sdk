@@ -10,10 +10,8 @@ import {
 	inverseNormalCdf,
 } from './utils.ts';
 
-const credentials = credentialsFromEnv();
-
 const trepa = new Trepa({
-	credentials,
+	credentials: credentialsFromEnv(),
 });
 
 const LEAD_TIME_MS = 10_000;
