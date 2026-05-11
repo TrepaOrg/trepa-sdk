@@ -19,47 +19,24 @@ function envUrl(value: string | undefined): string | undefined {
 }
 
 export interface TrepaConfig {
-	/**
-	 * One credential per swarm bot. The first entry is also used for calls on `Trepa` that are
-	 * not slot-scoped (e.g. `trepa.predictions`). Omit for public endpoints only.
-	 */
+	/** One credential per swarm bot; first entry is the primary `TrepaClient` session. */
 	credentials?: readonly BotCredentials[];
-	/** API base URL (default: production). */
+	/** Trepa REST origin. */
 	baseUrl?: string;
-	/** Solana HTTP JSON-RPC (balance manager, wallet HUD; default: public mainnet-beta). */
+	/** Solana HTTP RPC URL. */
 	solanaRpcUrl?: string;
-	/**
-	 * Solana WebSocket JSON-RPC (subscriptions). Not derived from `solanaRpcUrl`; set both when
-	 * leaving mainnet. Default: public mainnet-beta WS.
-	 */
+	/** Solana WebSocket RPC URL (set with `solanaRpcUrl` when not on default mainnet). */
 	solanaRpcSubscriptionsUrl?: string;
-	/**
-	 * Target balances per bot for the optional funder. Enable with env `TREPA_MASTER_PRIVATE_KEY`
-	 * (never pass the master secret in application code).
-	 */
+	/** Optional per-bot target balances; master key via `TREPA_MASTER_PRIVATE_KEY`. */
 	balanceManager?: BotBalanceManagerConfig;
 }
 
-/**
- * SDK entry point: REST client, `bots` runner, and resolved Solana RPC URLs.
- *
- * ```ts
- * const trepa = new Trepa({
- *   credentials: [{ apiKey: '…', privateKey: '…' }],
- * })
- * await trepa.bots.run({ predict: (pool) => ({ value: …, stake: pool.min_stake }) })
- * ```
- *
- * With multiple credentials, `trepa.bots.run` starts one loop per bot; inside `predict` / `onStart`,
- * use `ctx.trepa` for that bot’s session.
- */
+/** Root client: Trepa API plus `bots` and resolved Solana RPC URLs. */
 export class Trepa extends TrepaClient {
-	/** Parallel predictor runner (one loop per configured credential). */
+	/** Multi-bot runner (`credentials.length` loops). */
 	readonly bots: Bots;
 
-	/** Resolved Solana HTTP RPC URL. */
 	readonly solanaRpcUrl: string;
-	/** Resolved Solana WebSocket RPC URL. */
 	readonly solanaRpcSubscriptionsUrl: string;
 
 	constructor(config: TrepaConfig = {}) {

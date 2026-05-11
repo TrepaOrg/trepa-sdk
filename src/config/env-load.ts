@@ -3,7 +3,7 @@ import { loadEnvFile } from 'node:process';
 
 let loaded = false;
 
-/** Loads `.env.local` then `.env` once (Node); does not override existing `process.env` keys. */
+/** Loads `.env.local` then `.env` once without overriding existing env keys. */
 export function ensureTrepaEnvLoaded(): void {
 	if (loaded) return;
 	loaded = true;

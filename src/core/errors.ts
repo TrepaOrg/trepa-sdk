@@ -5,7 +5,7 @@ interface TrepaErrorOptions {
 	cause?: unknown;
 }
 
-/** Thrown when the Trepa API returns a non-2xx response or the SDK rejects a call. */
+/** Non-success Trepa HTTP response (`status`, optional `code` / `body`). */
 export class TrepaError extends Error {
 	readonly status: number;
 	readonly code?: string;
@@ -19,9 +19,6 @@ export class TrepaError extends Error {
 		this.body = options.body;
 	}
 }
-
-export const isTrepaError = (error: unknown): error is TrepaError =>
-	error instanceof TrepaError;
 
 interface ErrorBodyShape {
 	message?: unknown;

@@ -32,24 +32,43 @@ interface SlotLine {
 	text: string;
 }
 
-/** Fields shown for one bot’s balances in the swarm HUD. */
+/** One swarm column’s wallet line in the Ink HUD. */
 export interface SlotWalletHudLine {
 	username: string;
 	sol: string;
 	usdc: string;
 }
 
+interface SwarmMetaLine {
+	id: number;
+	text: string;
+}
+
 interface InkSnapshot {
 	layout: InkLayoutMode;
 	botCount: number;
 	globalLines: readonly GlobalLine[];
-	slotLines: readonly (SlotLine | undefined)[];
+	swarmMetaLines: readonly SwarmMetaLine[];
+	slotLines: readonly (readonly SlotLine[])[];
 	slotHud: readonly SlotWalletHudLine[];
 }
+
+const MAX_SWARM_META_LINES = 3;
 
 const MAX_GLOBAL = 7;
 
 const GLOBAL_LOG_VIEWPORT_LINES = 7;
+
+const MAX_SLOT_LOG_LINES = 6;
+
+const MAX_SWARM_SLOT_TEXT_CODEPOINTS = 480;
+
+function clampSwarmSlotMessage(text: string): string {
+	const normalized = text.replace(/\s+/g, ' ').trim();
+	const chars = [...normalized];
+	if (chars.length <= MAX_SWARM_SLOT_TEXT_CODEPOINTS) return normalized;
+	return `${chars.slice(0, MAX_SWARM_SLOT_TEXT_CODEPOINTS - 1).join('')}…`;
+}
 
 const BOT_COLORS = [
 	'cyan',
@@ -76,6 +95,7 @@ let snapshot: InkSnapshot = {
 	layout: 'global',
 	botCount: 1,
 	globalLines: [],
+	swarmMetaLines: [],
 	slotLines: [],
 	slotHud: [],
 };
@@ -120,7 +140,7 @@ export function setInkSwarmLayout(botCount: number): void {
 		...snapshot,
 		layout: 'swarm',
 		botCount: n,
-		slotLines: Array.from({ length: n }, (_, i) => snapshot.slotLines[i]),
+		slotLines: Array.from({ length: n }, (_, i) => snapshot.slotLines[i] ?? []),
 		slotHud: Array.from({ length: n }, (_, i) => snapshot.slotHud[i] ?? emptyHudLine()),
 	};
 	notify();
@@ -130,7 +150,15 @@ export function patchSlotWalletHud(
 	slotIndex: number,
 	patch: Partial<SlotWalletHudLine>,
 ): void {
-	const hud = snapshot.slotHud.map((line, i) =>
+	const minLen = Math.max(
+		slotIndex + 1,
+		snapshot.botCount,
+		snapshot.slotHud.length,
+	);
+	const padded = Array.from({ length: minLen }, (_, i) =>
+		snapshot.slotHud[i] ?? emptyHudLine(),
+	);
+	const hud = padded.map((line, i) =>
 		i === slotIndex ? { ...line, ...patch } : line,
 	);
 	snapshot = { ...snapshot, slotHud: hud };
@@ -148,15 +176,33 @@ export function pushInkGlobal(level: GlobalLevel, text: string): void {
 	notify();
 }
 
+export function pushInkSwarmMetaLine(text: string): void {
+	const t = text.replace(/\s+/g, ' ').trim();
+	if (t.length === 0) return;
+	snapshot = {
+		...snapshot,
+		swarmMetaLines: [
+			...snapshot.swarmMetaLines,
+			{ id: nextId++, text: t },
+		].slice(-MAX_SWARM_META_LINES),
+	};
+	notify();
+}
+
 export function pushInkSlotLine(
 	slot: TrepaLogSlot,
 	kind: EventKind,
 	text: string,
 ): void {
 	const idx = slot.index;
-	const rows = snapshot.slotLines.slice();
-	while (rows.length <= idx) rows.push(undefined);
-	rows[idx] = { id: nextId++, kind, text };
+	const rows = snapshot.slotLines.map((lines) => [...lines]);
+	while (rows.length <= idx) rows.push([]);
+	const prev = rows[idx] ?? [];
+	const next = [
+		...prev,
+		{ id: nextId++, kind, text: clampSwarmSlotMessage(text) },
+	].slice(-MAX_SLOT_LOG_LINES);
+	rows[idx] = next;
 	snapshot = { ...snapshot, slotLines: rows };
 	notify();
 }
@@ -169,6 +215,7 @@ export function unmountInk(): void {
 		layout: 'global',
 		botCount: 1,
 		globalLines: [],
+		swarmMetaLines: [],
 		slotLines: [],
 		slotHud: [],
 	};
@@ -314,26 +361,53 @@ function GlobalLineView({
 	);
 }
 
+function SwarmMetaStrip({
+	lines,
+	width,
+}: {
+	lines: readonly SwarmMetaLine[];
+	width: number;
+}): React.ReactElement | null {
+	if (lines.length === 0) return null;
+	return (
+		<Box
+			flexShrink={0}
+			flexDirection="column"
+			width={width}
+			borderStyle="single"
+			borderColor="cyan"
+			paddingX={1}
+			marginBottom={1}
+		>
+			{lines.map((line) => (
+				<Box key={line.id} flexShrink={0}>
+					<Text color="cyan" wrap="wrap">
+						◆ {line.text}
+					</Text>
+				</Box>
+			))}
+		</Box>
+	);
+}
+
 function SlotColumn({
 	slotIndex,
 	botCount,
-	latestLine,
+	lines,
 	hud,
 	columnWidth,
 	innerTextWidth,
 }: {
 	slotIndex: number;
 	botCount: number;
-	latestLine: SlotLine | undefined;
+	lines: readonly SlotLine[];
 	hud: SlotWalletHudLine;
 	columnWidth: number;
 	innerTextWidth: number;
 }): React.ReactElement {
 	const titleColor = BOT_COLORS[slotIndex % BOT_COLORS.length];
 	const nameLine =
-		hud.username === '' ? '…' : `@${hud.username}`;
-	const balLine =
-		hud.username === '' ? '…' : `${hud.sol} · ${hud.usdc}`;
+		hud.username === '' ? '@—' : `@${hud.username}`;
 	return (
 		<Box
 			width={columnWidth}
@@ -359,7 +433,12 @@ function SlotColumn({
 				</Box>
 				<Box height={1} width={innerTextWidth} overflow="hidden">
 					<Text dimColor wrap="truncate-end">
-						{balLine}
+						{hud.sol}
+					</Text>
+				</Box>
+				<Box height={1} width={innerTextWidth} overflow="hidden">
+					<Text dimColor wrap="truncate-end">
+						{hud.usdc}
 					</Text>
 				</Box>
 			</Box>
@@ -367,25 +446,30 @@ function SlotColumn({
 				flexGrow={1}
 				minHeight={0}
 				flexDirection="column"
-				rowGap={0}
+				rowGap={1}
 				overflow="hidden"
 				justifyContent="flex-end"
 				paddingX={1}
 			>
-				{latestLine !== undefined ? (
-					<Box
-						key={latestLine.id}
-						flexShrink={0}
-						height={1}
-						width={innerTextWidth}
-						overflow="hidden"
-					>
-						<Text color={slotKindColor(latestLine.kind)} wrap="truncate-end">
-							{slotKindPrefix(latestLine.kind)}
-							{latestLine.text}
-						</Text>
-					</Box>
-				) : null}
+				{lines.map((line, lineIdx) => {
+					const isLatest = lineIdx === lines.length - 1;
+					return (
+						<Box
+							key={line.id}
+							flexShrink={0}
+							width={innerTextWidth}
+						>
+							<Text
+								dimColor={!isLatest}
+								color={slotKindColor(line.kind)}
+								wrap="wrap"
+							>
+								{slotKindPrefix(line.kind)}
+								{line.text}
+							</Text>
+						</Box>
+					);
+				})}
 			</Box>
 		</Box>
 	);
@@ -492,6 +576,8 @@ function TrepaInkRoot(): React.ReactElement {
 				</Box>
 			</Box>
 
+			<SwarmMetaStrip lines={s.swarmMetaLines} width={cols} />
+
 			<Box
 				flexGrow={1}
 				minHeight={0}
@@ -520,7 +606,7 @@ function TrepaInkRoot(): React.ReactElement {
 									key={i}
 									slotIndex={i}
 									botCount={s.botCount}
-									latestLine={s.slotLines[i]}
+									lines={s.slotLines[i] ?? []}
 									hud={s.slotHud[i] ?? emptyHudLine()}
 									columnWidth={columnWidth}
 									innerTextWidth={innerTextWidth}

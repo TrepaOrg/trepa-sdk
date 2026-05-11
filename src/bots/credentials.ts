@@ -9,10 +9,8 @@ const trimEnv = (value: string | undefined): string | undefined => {
 };
 
 /**
- * Reads bot credentials from the environment. Single bot: `TREPA_API_KEY` and `TREPA_PRIVATE_KEY`.
- * Swarm: `TREPA_API_KEY_1` / `TREPA_PRIVATE_KEY_1`, `_2`, …
- *
- * @throws {TrepaError} Missing or incomplete pairs.
+ * Reads `TREPA_API_KEY` / `TREPA_PRIVATE_KEY` or indexed `_1`, `_2`, … pairs.
+ * @throws {TrepaError} When env pairs are missing or incomplete.
  */
 export const credentialsFromEnv = (): BotCredentials[] => {
 	ensureTrepaEnvLoaded();

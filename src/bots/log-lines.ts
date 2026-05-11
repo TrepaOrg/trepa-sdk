@@ -10,8 +10,8 @@ import type { EventKind } from '../logging/event-kind';
 import {
 	formatError,
 	formatNumber,
+	trepaStdoutIsInteractive,
 	writeEvent,
-	trepaLogSlotLanesEnabled,
 } from '../logging/format';
 
 const SKIP_REASON_LABEL: Record<BotSkippedInfo['reason'], string> = {
@@ -27,7 +27,7 @@ const SKIP_REASON_LABEL: Record<BotSkippedInfo['reason'], string> = {
 
 function prefixSlotLine(slot: BotSlot, line: string): string {
 	if (slot.count <= 1) return line;
-	if (trepaLogSlotLanesEnabled()) return line;
+	if (trepaStdoutIsInteractive()) return line;
 	return `[${slot.index + 1}/${slot.count}] ${line}`;
 }
 

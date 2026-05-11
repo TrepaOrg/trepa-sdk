@@ -1,6 +1,4 @@
-/**
- * Category for {@link writeEvent} and swarm TUI styling (`ready`, `pred`, `pred_update`, `skip`, `error`, `fund`).
- */
+/** `writeEvent` category and swarm column styling. */
 export type EventKind =
 	| 'ready'
 	| 'pred'
@@ -9,7 +7,7 @@ export type EventKind =
 	| 'error'
 	| 'fund';
 
-/** Target column for slot-scoped lines (same fields as `BotSlot` from `bots/types`). */
+/** Slot target for `writeEvent` when using swarm columns (`index` / `count` match `BotSlot`). */
 export interface TrepaLogSlot {
 	index: number;
 	count: number;

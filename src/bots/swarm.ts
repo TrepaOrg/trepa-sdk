@@ -21,7 +21,7 @@ import type { Trepa } from '../http/trepa';
 import {
 	logBotSwarmShutdown,
 	logBotSwarmStartup,
-	trepaLogSlotLanesEnabled,
+	trepaStdoutIsInteractive,
 } from '../logging/format';
 import {
 	balanceManagerShutdownWaitMs,
@@ -47,9 +47,7 @@ function mergeBalanceManagerConfig(
 	return { ...base, ...override };
 }
 
-/**
- * One predictor loop per credential on `new Trepa({ credentials })`.
- */
+/** Runs one predictor loop per `Trepa` credential. */
 export class Bots {
 	private readonly credentials: readonly BotCredentials[];
 	private readonly sessionDefaults: Omit<
@@ -94,9 +92,6 @@ export class Bots {
 		return this.credentials.length;
 	}
 
-	/**
-	 * Starts all bot loops in parallel. Pass shared {@link BotOptions} or `(slot) => BotOptions`.
-	 */
 	async run(
 		strategy: BotOptions | ((slot: BotSlot) => BotOptions),
 	): Promise<void> {
@@ -184,7 +179,7 @@ export class Bots {
 }
 
 const withTag = (slot: BotSlot, opts: BotOptions): BotOptions => {
-	if (slot.count <= 1 || trepaLogSlotLanesEnabled()) return opts;
+	if (slot.count <= 1 || trepaStdoutIsInteractive()) return opts;
 	const tag = `[${slot.index + 1}/${slot.count}]`;
 	const wrap = <Arg>(
 		fn: ((arg: Arg) => string | void) | undefined,

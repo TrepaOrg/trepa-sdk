@@ -32,7 +32,6 @@ class Resource {
 }
 
 export class AuthResource extends Resource {
-	/** Current authenticated user. */
 	async me(): Promise<Schema<'UserDto'>> {
 		return this.session.request(
 			() => this.client.GET('/auth/me'),
@@ -40,12 +39,10 @@ export class AuthResource extends Resource {
 		);
 	}
 
-	/** Refresh access token. */
 	async refresh(): Promise<void> {
 		return this.session.refresh();
 	}
 
-	/** Log out and clear session cookies. */
 	async logout(): Promise<void> {
 		return this.session.logout();
 	}
@@ -159,7 +156,6 @@ export class StreaksResource extends Resource {
 		);
 	}
 
-	/** Claim streak reward (build, sign, submit). Requires client `privateKey`. */
 	async claimReward(args: {
 		streakRewardId: string;
 	}): Promise<Schema<'SubmittedClaimStreakRewardTransactionDto'>> {
@@ -187,7 +183,6 @@ export class StreaksResource extends Resource {
 }
 
 export class PredictionsResource extends Resource {
-	/** Create prediction (build, sign, submit). Requires client `privateKey`. */
 	async create(args: {
 		poolId: string;
 		stake: number;
@@ -219,7 +214,6 @@ export class PredictionsResource extends Resource {
 		);
 	}
 
-	/** Update prediction outcome (build, sign, submit). Requires client `privateKey`. */
 	async update(args: {
 		predictionId: string;
 		value: number;
@@ -246,7 +240,6 @@ export class PredictionsResource extends Resource {
 		);
 	}
 
-	/** Update staked amount (build, sign, submit). Requires client `privateKey`. */
 	async updateStake(args: {
 		predictionId: string;
 		stake: number;
@@ -277,10 +270,6 @@ export class PredictionsResource extends Resource {
 }
 
 export class RewardsResource extends Resource {
-	/**
-	 * Claim a resolved pool reward (`rewardId` is often loaded via `users.predictions` embeds).
-	 * Requires client `privateKey`.
-	 */
 	async claim(args: {
 		poolId: string;
 		rewardId: string;
@@ -309,7 +298,6 @@ export class RewardsResource extends Resource {
 }
 
 export class WithdrawalsResource extends Resource {
-	/** On-chain withdrawal to an external wallet (build, sign, submit). Requires client `privateKey`. */
 	async create(args: {
 		toAddress: string;
 		amount: number;

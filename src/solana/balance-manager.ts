@@ -28,7 +28,7 @@ import type { BalanceManagerConfig } from './balance-manager-config';
 import type { BotCredentials } from '../bots/types';
 import { ensureTrepaEnvLoaded } from '../config/env-load';
 import type { Trepa } from '../http/trepa';
-import { trepaLog, writeEvent } from '../logging/format';
+import { trepaLog, writeEvent, writeSwarmMetaLine } from '../logging/format';
 import { sendAndConfirmTransactionFactory } from './vendor/send-and-confirm-transaction';
 
 type SendAndConfirmSigned = ReturnType<typeof sendAndConfirmTransactionFactory>;
@@ -152,15 +152,13 @@ async function runFunderLoop(
 
 	const { ctx, bots } = bootstrap;
 	const n = bots.length;
-	writeEvent(
-		'ready',
+	writeSwarmMetaLine(
 		`master ${shortAddr(ctx.master.address)} syncing ${n} ` +
 			`bot${n === 1 ? '' : 's'} to ` +
 			`${policy.usdcTarget} USDC (fill below ${policy.usdcThreshold}) and ` +
 			`${policy.solTarget} SOL (fill below ${policy.solThreshold}) ` +
 			`(master SOL reserve ${policy.masterSolReserve}; up to ` +
 			`${policy.maxBotsPerTransaction} bots per tx)`,
-		{ index: 0, count: Math.max(1, n) },
 	);
 
 	while (!signal.aborted) {

@@ -1,18 +1,14 @@
 import { address } from '@solana/addresses';
 import { createSolanaRpc } from '@solana/rpc';
-import type {
-	JsonParsedTokenAccount,
-	JsonParsedTokenProgramAccount,
-	RpcParsedType,
-} from '@solana/rpc-parsed-types';
 import { createSolanaRpcSubscriptions } from '@solana/rpc-subscriptions';
 import type {
-	AccountInfoBase,
-	AccountInfoWithJsonData,
 	Lamports,
 	TokenAmount,
+	AccountInfoBase,
+	AccountInfoWithJsonData,
 } from '@solana/rpc-types';
 import {
+	fetchMaybeToken,
 	findAssociatedTokenPda,
 	TOKEN_PROGRAM_ADDRESS,
 } from '@solana-program/token';
@@ -39,13 +35,7 @@ function tokenAmountToUiString(t: TokenAmount): string {
 	return formatNumber(n, Math.min(t.decimals, 6));
 }
 
-function isParsedSplTokenAccount(
-	parsed: JsonParsedTokenProgramAccount,
-): parsed is RpcParsedType<'account', JsonParsedTokenAccount> {
-	return parsed.type === 'account';
-}
-
-function usdcAmountFromJsonParsedAccountInfo(
+function stakeUiFromJsonParsedAccountInfo(
 	account: JsonParsedSplAccount | null,
 ): string {
 	if (!account) return '0';
@@ -53,15 +43,26 @@ function usdcAmountFromJsonParsedAccountInfo(
 	if (typeof data !== 'object' || data === null || !('parsed' in data)) {
 		return '0';
 	}
-	if (!('program' in data) || data.program !== TOKEN_PROGRAM_ADDRESS) {
+	const root = data as {
+		parsed?: { type?: string; info?: { tokenAmount?: TokenAmount } };
+	};
+	const parsed = root.parsed;
+	if (
+		typeof parsed !== 'object' ||
+		parsed === null ||
+		parsed.type !== 'account' ||
+		!parsed.info?.tokenAmount
+	) {
 		return '0';
 	}
-	const parsed = data.parsed as JsonParsedTokenProgramAccount;
-	if (!isParsedSplTokenAccount(parsed)) return '0';
 	return tokenAmountToUiString(parsed.info.tokenAmount);
 }
 
-/** Subscribes to live SOL and stake-token balances for one swarm slot (TTY / Ink only). */
+function formatStakeBaseUnits(amount: bigint, decimals: number): string {
+	const n = Number(amount) / 10 ** decimals;
+	return formatNumber(n, Math.min(decimals, 6));
+}
+
 export function startBotWalletHudMirror(opts: {
 	client: TrepaClient;
 	me: UserDto;
@@ -88,9 +89,12 @@ async function runBotWalletHudMirror(opts: {
 	const subs = createSolanaRpcSubscriptions(opts.wsUrl);
 
 	let stakeMint: string | undefined;
+	let stakeDecimals = 6;
 	try {
 		const pools = await opts.client.pools.list({ limit: 1 });
-		stakeMint = pools[0]?.stake_token_mint;
+		const p0 = pools[0];
+		stakeMint = p0?.stake_token_mint;
+		if (typeof p0?.decimals === 'number') stakeDecimals = p0.decimals;
 	} catch {}
 
 	const solPipe = createAsyncGeneratorWithInitialValueAndSlotTracking<
@@ -128,6 +132,16 @@ async function runBotWalletHudMirror(opts: {
 		tokenProgram: TOKEN_PROGRAM_ADDRESS,
 	});
 
+	try {
+		const token = await fetchMaybeToken(rpc, ata, {
+			commitment: 'confirmed',
+		});
+		const ui = token.exists
+			? formatStakeBaseUnits(token.data.amount, stakeDecimals)
+			: '0';
+		patchSlotWalletHud(opts.slotIndex, { usdc: `${ui} USDC` });
+	} catch {}
+
 	const usdcPipe = createAsyncGeneratorWithInitialValueAndSlotTracking<
 		JsonParsedSplAccount | null,
 		JsonParsedSplAccount | null,
@@ -139,13 +153,13 @@ async function runBotWalletHudMirror(opts: {
 			commitment: 'confirmed',
 		}),
 		rpcValueMapper: (info: JsonParsedSplAccount | null) =>
-			usdcAmountFromJsonParsedAccountInfo(info),
+			stakeUiFromJsonParsedAccountInfo(info),
 		rpcSubscriptionRequest: subs.accountNotifications(ata, {
 			encoding: 'jsonParsed',
 			commitment: 'confirmed',
 		}),
 		rpcSubscriptionValueMapper: (info: JsonParsedSplAccount | null) =>
-			usdcAmountFromJsonParsedAccountInfo(info),
+			stakeUiFromJsonParsedAccountInfo(info),
 	});
 	void (async () => {
 		try {

@@ -24,7 +24,7 @@ import type {
 } from './types';
 import { TrepaError } from '../core/errors';
 import { TrepaClient } from '../http/client';
-import { trepaBotWalletHudSubscriptionsEnabled } from '../logging/format';
+import { trepaStdoutIsInteractive } from '../logging/format';
 import { startBotWalletHudMirror } from '../solana/wallet-hud';
 
 type BotState =
@@ -63,7 +63,7 @@ export async function runPredictorLoop(
 	const publicCtx: BotContext = { slot, me, trepa: client, signal };
 	emit('ready', lineForReady(options, publicCtx, slot, authMs), slot);
 
-	if (trepaBotWalletHudSubscriptionsEnabled()) {
+	if (trepaStdoutIsInteractive()) {
 		startBotWalletHudMirror({
 			client,
 			me,

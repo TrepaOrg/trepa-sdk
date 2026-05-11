@@ -1,7 +1,4 @@
-/**
- * Human-readable stake-token and SOL targets per bot for the optional funder (`TREPA_MASTER_PRIVATE_KEY`).
- * Attach on `Trepa`, `BotSwarmDefaults`, or `BotOptions.balanceManager`.
- */
+/** Optional funder targets per bot (`TREPA_MASTER_PRIVATE_KEY`). */
 export interface BotBalanceManagerConfig {
 	/** @default 10 */
 	usdcTarget?: number;

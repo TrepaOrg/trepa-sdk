@@ -8,10 +8,7 @@ import {
 	partiallySignTransaction,
 } from '@solana/kit';
 
-/**
- * Partially signs a base64 Solana transaction from `predictions.create` (and similar) using the
- * bot’s base58 secret (`BotCredentials.privateKey`). Returns base64 for the matching `submit` call.
- */
+/** Partially signs a base64 transaction with a base58 secret; returns base64 for submit. */
 export const signTransaction = async (
 	base64Transaction: string,
 	privateKeyBase58: string,

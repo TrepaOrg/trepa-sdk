@@ -69,15 +69,8 @@ const captureSetCookies = (response: Response, jar: CookieJar): void => {
 };
 
 export interface SessionConfig {
-	/**
-	 * API key: session is created on first authenticated request; 401/403 trigger refresh when possible.
-	 */
 	apiKey?: string;
-	/**
-	 * Base58-encoded Solana secret (64 bytes). Required for endpoints that return transactions to sign.
-	 */
 	privateKey?: string;
-	/** API base URL (default: production). */
 	baseUrl?: string;
 }
 
@@ -121,7 +114,6 @@ export class Session {
 		this.client.use(cookieMiddleware);
 	}
 
-	/** Authenticated request helper; throws {@link TrepaError} on non-2xx. */
 	async request<T>(
 		fn: () => Promise<FetchResult<T>>,
 		fallbackMessage = 'Trepa API error',

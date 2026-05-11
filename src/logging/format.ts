@@ -5,6 +5,7 @@ import {
 	mountInkIfNeeded,
 	pushInkGlobal,
 	pushInkSlotLine,
+	pushInkSwarmMetaLine,
 	setInkSwarmLayout,
 	unmountInk,
 } from './log-ink';
@@ -15,18 +16,11 @@ export type { EventKind, TrepaLogSlot } from './event-kind';
 
 const leadSymbol = '✦';
 
-const usePlainLogs =
-	typeof process === 'undefined' || process.stdout?.isTTY !== true;
-
-/** `true` when stdout is a TTY so the SDK may open Solana websocket subscriptions for the wallet HUD. */
-export function trepaBotWalletHudSubscriptionsEnabled(): boolean {
+export function trepaStdoutIsInteractive(): boolean {
 	return typeof process !== 'undefined' && process.stdout?.isTTY === true;
 }
 
-/** `true` when swarm Ink layout is active (per-bot columns). */
-export function trepaLogSlotLanesEnabled(): boolean {
-	return isInkMounted() && inkLayoutIsSwarm();
-}
+const usePlainLogs = !trepaStdoutIsInteractive();
 
 type GlobalLevel =
 	| 'log'
@@ -58,9 +52,22 @@ function dispatchGlobal(level: GlobalLevel, text: string): void {
 	pushInkGlobal(level, text);
 }
 
-/**
- * Logger used by the SDK and available to bots. Uses Ink in a TTY; otherwise `console` methods.
- */
+export function writeSwarmMetaLine(message: string): void {
+	const t = message.trim();
+	if (t.length === 0) return;
+	if (usePlainLogs) {
+		console.log(`◆ ${t}`);
+		return;
+	}
+	mountInkIfNeeded();
+	if (inkLayoutIsSwarm()) {
+		pushInkSwarmMetaLine(t);
+		return;
+	}
+	pushInkGlobal('log', t);
+}
+
+/** Structured logger: Ink when stdout is a TTY, otherwise `console`. */
 export const trepaLog = {
 	log: (msg: string): void => dispatchGlobal('log', msg),
 	info: (msg: string): void => dispatchGlobal('info', msg),
@@ -71,7 +78,7 @@ export const trepaLog = {
 	start: (msg: string): void => dispatchGlobal('start', msg),
 };
 
-/** Standard swarm startup banner (version, docs, API URL, credential count). */
+/** Prints the swarm startup banner (TTY: Ink header). */
 export function logBotSwarmStartup(opts: {
 	credentialCount: number;
 	apiBaseUrl?: string;
@@ -105,6 +112,7 @@ export function logBotSwarmStartup(opts: {
 	trepaLog.start('Starting predictor loop…');
 }
 
+/** Tears down Ink after a swarm run; always logs "Predictor loop stopped". */
 export function logBotSwarmShutdown(_opts?: {
 	credentialCount?: number;
 }): void {
@@ -116,18 +124,20 @@ export function logBotSwarmShutdown(_opts?: {
 	console.log('Predictor loop stopped');
 }
 
+/** Fixed-decimal locale string (`en-US`). */
 export const formatNumber = (value: number, decimals: number): string =>
 	value.toLocaleString('en-US', {
 		minimumFractionDigits: decimals,
 		maximumFractionDigits: decimals,
 	});
 
+/** Best-effort string for logging. */
 export const formatError = (err: unknown): string => {
 	if (err instanceof Error) return `${err.name}: ${err.message}`;
 	return String(err);
 };
 
-/** Emit a line through the same routing as the built-in bot loop (`writeEvent` + optional Ink columns). */
+/** Bot-loop event: TTY swarm + `slot` → column; else global or plain console. */
 export const writeEvent = (
 	kind: EventKind,
 	message: string,

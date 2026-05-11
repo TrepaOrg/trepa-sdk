@@ -10,10 +10,10 @@ export type OpenPool = components['schemas']['PoolWithRelationsDto'];
 
 export type UserDto = components['schemas']['UserDto'];
 
-/** Result of {@link BotOptions.predict}: submit `{ value, stake }` or `null` to skip the pool. */
+/** Submit `{ value, stake }` or `null` to skip. */
 export type BotPredictDecision = { value: number; stake: number } | null;
 
-/** Result of {@link BotOptions.updatePrediction}: new `{ value }` or `null` to leave the chain unchanged. */
+/** New outcome or `null` to leave on-chain value unchanged. */
 export type BotUpdatePredictionDecision = { value: number } | null;
 
 export interface BotCredentials {
@@ -21,16 +21,12 @@ export interface BotCredentials {
 	privateKey: string;
 }
 
-/**
- * Defaults for each bot’s {@link Session} (except per-slot keys) plus Solana URLs and balance manager.
- * Usually supplied through `new Trepa(…)`.
- */
+/** Session defaults (minus per-bot keys), Solana URLs, and optional funder config. */
 export type BotSwarmDefaults = Omit<SessionConfig, 'apiKey' | 'privateKey'> & {
 	/** @default `TREPA_SOLANA_RPC_URL` or public mainnet-beta HTTPS */
 	solanaRpcUrl?: string;
 	/** @default `TREPA_SOLANA_RPC_SUBSCRIPTIONS_URL` or public mainnet-beta WS */
 	solanaRpcSubscriptionsUrl?: string;
-	/** @internal Used by `Trepa` to wire `bots.run` and the funder. */
 	trepa?: Trepa;
 	balanceManager?: BotBalanceManagerConfig;
 };
@@ -40,10 +36,7 @@ export interface BotSlot {
 	count: number;
 }
 
-/**
- * Per-slot context for {@link BotOptions.predict}, {@link BotOptions.updatePrediction}, and hooks.
- * Use `ctx.trepa` for API calls as this bot.
- */
+/** Per-slot API context for `predict` / `updatePrediction` / hooks. */
 export interface BotContext {
 	slot: BotSlot;
 	me: UserDto;
@@ -51,14 +44,14 @@ export interface BotContext {
 	signal: AbortSignal;
 }
 
-/** Argument to {@link BotOptions.onPredicted} after a successful create. */
+/** Successful `predictions.create`. */
 export interface BotPredictionInfo {
 	pool: OpenPool;
 	value: number;
 	stake: number;
 }
 
-/** Passed to {@link BotOptions.updatePrediction} after create (includes `predictionId` for `predictions.update`). */
+/** Context for `updatePrediction` after create. */
 export interface BotSubmittedPredictionContext {
 	pool: OpenPool;
 	value: number;
@@ -66,7 +59,7 @@ export interface BotSubmittedPredictionContext {
 	predictionId: string;
 }
 
-/** Argument to {@link BotOptions.onPredictionUpdated} after a successful update. */
+/** Successful `predictions.update`. */
 export interface BotPredictionUpdatedInfo {
 	pool: OpenPool;
 	predictionId: string;
@@ -75,7 +68,7 @@ export interface BotPredictionUpdatedInfo {
 	stake: number;
 }
 
-/** Argument to {@link BotOptions.onPoolSkipped}; `pool` is `null` when nothing was open. */
+/** Skip path for a pool window. */
 export interface BotSkippedInfo {
 	pool: OpenPool | null;
 	reason:
@@ -89,10 +82,7 @@ export interface BotSkippedInfo {
 		| 'predict-too-late';
 }
 
-/**
- * Bot strategy for one slot. Use a single object for identical bots, or `trepa.bots.run((slot) => ({ … }))`
- * for per-slot options.
- */
+/** Strategy and lifecycle hooks for one swarm slot. */
 export interface BotOptions {
 	predict: (
 		pool: OpenPool,
@@ -110,10 +100,8 @@ export interface BotOptions {
 	/** @default 250 */
 	postResolveBufferMs?: number;
 
-	/** Stops the slot cooperatively when aborted; `bots.run` also listens for `SIGINT` / `SIGTERM`. */
 	signal?: AbortSignal;
 
-	/** Merged over `Trepa`’s `balanceManager` for this slot’s funder (master key: `TREPA_MASTER_PRIVATE_KEY`). */
 	balanceManager?: BotBalanceManagerConfig;
 
 	onStart?: (ctx: BotContext) => string | void;

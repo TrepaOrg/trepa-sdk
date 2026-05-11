@@ -7,9 +7,9 @@ type PkgMeta = {
 
 const meta = pkg as PkgMeta;
 
-/** Current `@trepa/sdk` version. */
+/** @trepa/sdk version string. */
 export const SDK_VERSION: string = meta.version;
 
-/** Package documentation URL (`package.json` `documentation`, or Trepa developer docs). */
+/** Developer documentation URL. */
 export const SDK_DOCS_URL: string =
 	meta.documentation ?? 'https://docs.trepa.io/developers/introduction';
