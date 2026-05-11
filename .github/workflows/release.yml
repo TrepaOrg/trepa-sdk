@@ -118,3 +118,4 @@ jobs:
           tag_name: v${{ inputs.version }}
           name: v${{ inputs.version }}
           generate_release_notes: true
+          make_latest: ${{ github.ref_name == 'master' }}
