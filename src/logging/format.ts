@@ -101,7 +101,7 @@ export function logBotSwarmStartup(opts: {
 	setInkSwarmLayout(n);
 	pushInkGlobal(
 		'log',
-		`${leadSymbol} @trepa/sdk v${SDK_VERSION} · ${n}-bot swarm`,
+		`${leadSymbol} @trepa/sdk v${SDK_VERSION}`,
 	);
 	pushInkGlobal('log', `- Docs: ${SDK_DOCS_URL}`);
 	pushInkGlobal('log', `- API: ${api}`);

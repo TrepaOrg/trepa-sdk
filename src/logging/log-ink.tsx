@@ -395,23 +395,21 @@ function SlotColumn({
 	botCount,
 	lines,
 	hud,
-	columnWidth,
-	innerTextWidth,
 }: {
 	slotIndex: number;
 	botCount: number;
 	lines: readonly SlotLine[];
 	hud: SlotWalletHudLine;
-	columnWidth: number;
-	innerTextWidth: number;
 }): React.ReactElement {
 	const titleColor = BOT_COLORS[slotIndex % BOT_COLORS.length];
 	const nameLine =
 		hud.username === '' ? '@—' : `@${hud.username}`;
 	return (
 		<Box
-			width={columnWidth}
-			flexShrink={0}
+			flexGrow={1}
+			flexBasis={0}
+			flexShrink={1}
+			minWidth={0}
 			height="100%"
 			minHeight={0}
 			flexDirection="column"
@@ -420,23 +418,29 @@ function SlotColumn({
 			paddingX={0}
 			overflow="hidden"
 		>
-			<Box flexShrink={0} flexDirection="column" paddingX={1} overflow="hidden">
-				<Box height={1} width={innerTextWidth} overflow="hidden">
+			<Box
+				flexShrink={0}
+				flexDirection="column"
+				paddingX={1}
+				overflow="hidden"
+				width="100%"
+			>
+				<Box height={1} overflow="hidden">
 					<Text bold color={titleColor} wrap="truncate-end">
 						bot {slotIndex + 1}/{botCount}
 					</Text>
 				</Box>
-				<Box height={1} width={innerTextWidth} overflow="hidden">
+				<Box height={1} overflow="hidden">
 					<Text dimColor wrap="truncate-end">
 						{nameLine}
 					</Text>
 				</Box>
-				<Box height={1} width={innerTextWidth} overflow="hidden">
+				<Box height={1} overflow="hidden">
 					<Text dimColor wrap="truncate-end">
 						{hud.sol}
 					</Text>
 				</Box>
-				<Box height={1} width={innerTextWidth} overflow="hidden">
+				<Box height={1} overflow="hidden">
 					<Text dimColor wrap="truncate-end">
 						{hud.usdc}
 					</Text>
@@ -450,15 +454,12 @@ function SlotColumn({
 				overflow="hidden"
 				justifyContent="flex-end"
 				paddingX={1}
+				width="100%"
 			>
 				{lines.map((line, lineIdx) => {
 					const isLatest = lineIdx === lines.length - 1;
 					return (
-						<Box
-							key={line.id}
-							flexShrink={0}
-							width={innerTextWidth}
-						>
+						<Box key={line.id} flexShrink={0} width="100%">
 							<Text
 								dimColor={!isLatest}
 								color={slotKindColor(line.kind)}
@@ -478,18 +479,6 @@ function SlotColumn({
 function maxBotsPerRow(contentWidth: number): number {
 	const cell = MIN_BOT_COL_FLEX + COL_GAP;
 	return Math.max(1, Math.floor((contentWidth + COL_GAP) / cell));
-}
-
-function slotColumnOuterWidth(rowBotCount: number, termCols: number): number {
-	if (rowBotCount <= 0) return Math.max(1, termCols);
-	return Math.max(
-		1,
-		Math.floor((termCols - (rowBotCount - 1) * COL_GAP) / rowBotCount),
-	);
-}
-
-function slotInnerTextWidth(columnOuterWidth: number): number {
-	return Math.max(4, columnOuterWidth - 4);
 }
 
 function balancedBotRows(total: number, maxPerRow: number): number[][] {
@@ -586,9 +575,6 @@ function TrepaInkRoot(): React.ReactElement {
 				overflow="hidden"
 			>
 				{gridRows.map((rowIndices, rowIdx) => {
-					const k = rowIndices.length;
-					const columnWidth = slotColumnOuterWidth(k, cols);
-					const innerTextWidth = slotInnerTextWidth(columnWidth);
 					return (
 						<Box
 							key={rowIdx}
@@ -608,8 +594,6 @@ function TrepaInkRoot(): React.ReactElement {
 									botCount={s.botCount}
 									lines={s.slotLines[i] ?? []}
 									hud={s.slotHud[i] ?? emptyHudLine()}
-									columnWidth={columnWidth}
-									innerTextWidth={innerTextWidth}
 								/>
 							))}
 						</Box>
