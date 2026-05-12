@@ -48,6 +48,9 @@
   "engines": {
     "node": ">=20"
   },
+  "pnpm": {
+    "minimumReleaseAge": 1440
+  },
   "scripts": {
     "gen": "node scripts/gen.mjs",
     "build": "tsup",
