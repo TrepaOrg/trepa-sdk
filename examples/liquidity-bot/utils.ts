@@ -30,6 +30,7 @@ const MIN_SAMPLE_COUNT = Math.floor((SEVEN_DAYS_SEC / 60) * MIN_COVERAGE_RATIO);
 
 const STDDEV_CACHE_TTL_MS = 30 * 60 * 1000;
 let cachedStddev: { value: number; computedAt: number } | null = null;
+let inflightStddev: Promise<number> | null = null;
 
 interface PythOhlcResponse {
 	s: string;
@@ -45,9 +46,21 @@ export const fetchBtcStdLogReturns = async (): Promise<number> => {
 		return cachedStddev.value;
 	}
 
-	const value = await computeStdLogReturns();
-	cachedStddev = { value, computedAt: Date.now() };
-	return value;
+	if (inflightStddev !== null) {
+		return inflightStddev;
+	}
+
+	inflightStddev = (async () => {
+		try {
+			const value = await computeStdLogReturns();
+			cachedStddev = { value, computedAt: Date.now() };
+			return value;
+		} finally {
+			inflightStddev = null;
+		}
+	})();
+
+	return inflightStddev;
 };
 
 const computeStdLogReturns = async (): Promise<number> => {
