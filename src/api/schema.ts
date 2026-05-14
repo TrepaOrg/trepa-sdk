@@ -204,26 +204,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/pools/resolution/preview": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Preview resolution for a pool
-         * @description Previews the outcome and reward split for a pool whose reference time has passed. Requires an authenticated session.
-         */
-        get: operations["PoolsController_previewResolution"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/pools/{id}": {
         parameters: {
             query?: never;
@@ -492,7 +472,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get the Bitcoin flash streak
+         * Get the Bitcoin streak
          * @description Returns the streak that powers the Bitcoin Flash product.
          */
         get: operations["StreaksController_getBitcoinStreak"];
@@ -582,7 +562,7 @@ export interface components {
             avatar_id?: string | null;
             email?: string;
             username: string;
-            twitter_username?: string;
+            twitter_username?: string | null;
             has_seen_tour: boolean;
             role: components["schemas"]["UserRole"];
             wallet_address: string;
@@ -595,6 +575,7 @@ export interface components {
             updated_at: string;
             code: string;
             max_uses: number;
+            notes?: string | null;
             user_id?: string | null;
             creator?: components["schemas"]["UserDto"];
             invitees?: components["schemas"]["UserDto"][];
@@ -722,7 +703,7 @@ export interface components {
             avatar_id?: string | null;
             email?: string;
             username: string;
-            twitter_username?: string;
+            twitter_username?: string | null;
             has_seen_tour: boolean;
             role: components["schemas"]["UserRole"];
             wallet_address: string;
@@ -753,6 +734,10 @@ export interface components {
         };
         StreakDto: {
             id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
             streak_accumulator_account: string;
             title: string;
             /** @example 5 */
@@ -853,7 +838,6 @@ export interface components {
             is_active: boolean;
             /** Format: date-time */
             last_used_at?: string | null;
-            user?: components["schemas"]["UserWithRelationsDto"];
         };
         /** @enum {string} */
         SortPredictionsBy: "CREATION_DATE" | "RESOLUTION_DATE";
@@ -887,6 +871,7 @@ export interface components {
         LeaderboardEntryDto: {
             user_id: string;
             username: string;
+            twitter_username?: string | null;
             avatar_url: Record<string, never>;
             total_roi: Record<string, never>;
             total_pnl: Record<string, never>;
@@ -969,7 +954,7 @@ export interface components {
         };
         /** @enum {string} */
         StreakEvent: "NONE" | "QUALIFIED" | "RESET" | "REWARDED";
-        StreaksWithRelationsDto: {
+        StreakWithRelationsDto: {
             id: string;
             /** Format: date-time */
             created_at: string;
@@ -998,22 +983,15 @@ export interface components {
             user_wallet_address: string;
             amount: number;
             is_claimed: boolean;
-            streak?: components["schemas"]["StreaksWithRelationsDto"];
+            streak?: components["schemas"]["StreakWithRelationsDto"];
         };
         StreakDetailsDto: {
             streak: components["schemas"]["StreakDto"];
-            /**
-             * @description Current qualifying wins toward the next streak reward
-             * @example 2
-             */
             current_streak_count: number;
-            /**
-             * @description last pool participated (with respect to creation_time) in for this streak
-             * @example 2025-02-24T12:00:00.000Z
-             */
             last_pool_participated_at?: Record<string, never>;
             last_streak_event: components["schemas"]["StreakEvent"];
             streak_rewards?: components["schemas"]["StreakRewardWithRelationsDto"][];
+            current_streak_scores?: number[];
         };
         CreateNewPoolDto: {
             min_outcome: number;
@@ -1055,6 +1033,8 @@ export interface components {
             best_return?: Record<string, never> | null;
             user_rank?: Record<string, never> | null;
         };
+        /** @enum {string} */
+        ALL_PREDICTION_RELATIONS: "user" | "pool" | "reward" | "streak" | "pool.image" | "pool.resolution";
         PoolStatisticsDto: {
             winning_range: number[] | null;
             total_predictors_count: number;
@@ -1067,6 +1047,7 @@ export interface components {
         UserResultDto: {
             title: string;
             username: string;
+            twitter_username?: string | null;
             user_accuracy: number;
             user_value: number;
             actual_value: number;
@@ -1085,6 +1066,7 @@ export interface components {
         };
         PoolRankingEntryDto: {
             username: string;
+            twitter_username?: string | null;
             avatar_url: Record<string, never>;
             accuracy: number;
             value: number;
@@ -1225,6 +1207,11 @@ export interface components {
         /** @enum {string} */
         ProgramConfigStatus: "ACTIVE" | "FROZEN";
         ProgramConfigsDto: {
+            id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
             config_account: string;
             admin_address: string;
             platform_fee_bps: number;
@@ -1294,6 +1281,7 @@ export interface components {
              * @default 1
              */
             max_uses: number;
+            notes?: string;
         };
         InviteDto: {
             id: string;
@@ -1303,12 +1291,14 @@ export interface components {
             updated_at: string;
             code: string;
             max_uses: number;
+            notes?: string | null;
             user_id?: string | null;
         };
         WaitlistReferralInsightsDto: {
             waitlist_rank: number;
             waitlist_total: number;
             referral_count: number;
+            converted_user_count: number;
         };
         JoinWaitlistDto: {
             email: string;
@@ -1636,36 +1626,6 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["PoolWithRelationsDto"][];
                 };
-            };
-        };
-    };
-    PoolsController_previewResolution: {
-        parameters: {
-            query: {
-                /** @description Pool UUID */
-                pool_id: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description When rewards cannot be ranked, `refunds` lists participants and `winners`/`losers` are empty. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ResolutionPreviewDto"];
-                };
-            };
-            /** @description Pool not found, or its reference time has not passed yet. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
         };
     };
