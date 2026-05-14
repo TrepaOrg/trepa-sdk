@@ -116,6 +116,17 @@ export class PoolsResource extends Resource {
 			}),
 		);
 	}
+
+	async predictions(
+		id: string,
+		params: Query<'PoolsController_findPoolPredictions'> = {},
+	): Promise<Schema<'PredictionWithRelationsDto'>[]> {
+		return this.session.request(() =>
+			this.client.GET('/pools/{id}/predictions', {
+				params: { path: { id }, query: params },
+			}),
+		);
+	}
 }
 
 export class StreaksResource extends Resource {
