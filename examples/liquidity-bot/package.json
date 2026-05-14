@@ -11,7 +11,7 @@
     "@trepa/sdk": "0.2.4"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "typescript": "^6.0.0"
+    "@types/node": "22.19.18",
+    "typescript": "6.0.3"
   }
 }

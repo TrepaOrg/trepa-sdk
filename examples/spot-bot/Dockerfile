@@ -1,4 +1,4 @@
-FROM node:22-bookworm-slim
+FROM node:22.22.2-bookworm-slim
 WORKDIR /app
 ENV NODE_OPTIONS=--experimental-strip-types
 COPY package.json package-lock.json ./
