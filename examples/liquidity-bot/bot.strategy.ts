@@ -1,8 +1,4 @@
-import {
-	type BotSubmittedPredictionContext,
-	Trepa,
-	credentialsFromEnv,
-} from '@trepa/sdk';
+import { Trepa, credentialsFromEnv } from '@trepa/sdk';
 
 import {
 	fetchBtcPrice,
@@ -40,7 +36,7 @@ await trepa.bots.run(({ index, count }) => ({
 
 		return { value, stake };
 	},
-	updatePrediction: async (prediction: BotSubmittedPredictionContext) => {
+	updatePrediction: async (prediction) => {
 		const closeTs = new Date(prediction.pool.prediction_end_date).getTime();
 		const waitMs = closeTs - LEAD_TIME_MS - Date.now();
 
