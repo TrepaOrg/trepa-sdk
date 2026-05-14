@@ -224,6 +224,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/pools/{id}/predictions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a pool's predictions
+         * @description Returns paginated predictions for a pool, ordered by creation date (newest first), with optional embedded relations.
+         */
+        get: operations["PoolsController_findPoolPredictions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/transactions/prediction": {
         parameters: {
             query?: never;
@@ -1650,6 +1670,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PoolWithRelationsDto"];
+                };
+            };
+            /** @description The pool has not been found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PoolsController_findPoolPredictions: {
+        parameters: {
+            query?: {
+                offset?: number;
+                limit?: number;
+                includes?: components["schemas"]["ALL_PREDICTION_RELATIONS"][];
+            };
+            header?: never;
+            path: {
+                /** @description Pool identifier */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The pool's predictions have been retrieved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PredictionWithRelationsDto"][];
                 };
             };
             /** @description The pool has not been found. */
