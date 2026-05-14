@@ -610,7 +610,7 @@ export interface components {
             url: string;
         };
         /** @enum {string} */
-        PoolUnit: "COUNT" | "PERCENTAGE" | "BASIS_POINTS" | "USD" | "EUR" | "GBP" | "JPY" | "CNY" | "SECONDS" | "MINUTES" | "HOURS" | "DAYS" | "MONTHS" | "YEARS" | "PIP" | "TICK" | "MM" | "CM" | "M" | "KM" | "IN" | "FT" | "YD" | "MI";
+        PoolUnit: "USD";
         /** @enum {string} */
         PoolStatus: "ACTIVE" | "PREDICTIONS_FROZEN" | "CLAIMS_FROZEN" | "FROZEN";
         ResolutionDto: {
