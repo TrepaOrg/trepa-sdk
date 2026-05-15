@@ -2,20 +2,40 @@ name: CI Pipeline
 
 on:
   push:
-    branches: [master, develop]
+    branches: [master, stage, develop]
   pull_request:
-    branches: [master, develop]
+    branches: [master, stage, develop]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Semver to release (e.g. 0.2.0). Must be greater than the current version.'
+        required: true
+        type: string
+      schema_up_to_date:
+        description: 'I regenerated `src/api/schema.ts` against the latest OpenAPI spec and committed it.'
+        required: true
+        type: boolean
+        default: false
 
-permissions:
-  contents: read
-  actions: write
+concurrency:
+  group: ${{ (github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/master' && github.event_name == 'push')) && format('release-master-{0}', github.repository) || format('{0}-{1}', github.workflow, github.ref) }}
+  cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/master' && github.event_name == 'push')) }}
+
+permissions: {}
 
 jobs:
   build-and-test:
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: write
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Setup pnpm
         uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6
@@ -27,10 +47,179 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Run Linter
         run: pnpm run lint
 
       - name: Build Project
         run: pnpm run build
+
+  release-build:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+
+    steps:
+      - name: Validate version input
+        run: |
+          if ! echo "${{ inputs.version }}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::'${{ inputs.version }}' is not a valid semver."
+            exit 1
+          fi
+
+      - name: Confirm schema regeneration
+        run: |
+          if [ "${{ inputs.schema_up_to_date }}" != "true" ]; then
+            echo "::error::Tick the 'schema_up_to_date' box before releasing. Run \`pnpm gen\` locally against the latest openapi.json, commit the resulting \`src/api/schema.ts\`, push, then re-run this workflow."
+            exit 1
+          fi
+
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+          registry-url: 'https://registry.npmjs.org'
+          scope: '@trepa'
+
+      - name: Ensure jq is available
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Compare against current version
+        id: compare
+        run: |
+          CURRENT=$(jq -r .version package.json)
+          REQUESTED="${{ inputs.version }}"
+          echo "Current: $CURRENT, requested: $REQUESTED"
+          HIGHEST=$(printf '%s\n%s\n' "$CURRENT" "$REQUESTED" | sort -V | tail -n 1)
+          if [ "$HIGHEST" != "$REQUESTED" ] || [ "$CURRENT" = "$REQUESTED" ]; then
+            echo "::error::Requested version ($REQUESTED) must be strictly greater than current ($CURRENT)."
+            exit 1
+          fi
+          echo "current=$CURRENT" >> $GITHUB_OUTPUT
+
+      - name: Bump package.json to ${{ inputs.version }}
+        run: |
+          jq --arg v "${{ inputs.version }}" '.version = $v' package.json > package.json.tmp
+          mv package.json.tmp package.json
+          echo "Bumped version: ${{ steps.compare.outputs.current }} -> ${{ inputs.version }}"
+
+      - name: Build SDK (tsup)
+        run: pnpm build
+
+      - name: Verify pack contents
+        run: |
+          pnpm pack --pack-destination /tmp/pack
+          ls -la /tmp/pack
+          tar -tzf /tmp/pack/trepa-sdk-${{ inputs.version }}.tgz | sort
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dc8b932 # v4.6.1
+        with:
+          name: sdk-release
+          path: |
+            dist
+            package.json
+            README.md
+          if-no-files-found: error
+
+  publish-npm:
+    if: github.event_name == 'workflow_dispatch'
+    needs: release-build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+
+    steps:
+      - name: Download release artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: sdk-release
+          path: pkg
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6
+        with:
+          version: 10.33.4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+          scope: '@trepa'
+
+      - name: Publish to npm
+        working-directory: pkg
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: pnpm publish --no-git-checks --access public --provenance --ignore-scripts
+
+  release-git:
+    if: github.event_name == 'workflow_dispatch'
+    needs: publish-npm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Ensure jq is available
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Commit version bump
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          jq --arg v "${{ inputs.version }}" '.version = $v' package.json > package.json.tmp
+          mv package.json.tmp package.json
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json
+          if git diff --cached --quiet; then
+            echo "Nothing to commit."
+          else
+            git commit -m "chore(release): @trepa/sdk@${{ inputs.version }}"
+            git pull --rebase origin "${{ github.ref_name }}"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
+
+      - name: Tag release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+          git tag "v${{ inputs.version }}"
+          git push origin "v${{ inputs.version }}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3
+        with:
+          tag_name: v${{ inputs.version }}
+          name: v${{ inputs.version }}
+          generate_release_notes: true
+          make_latest: ${{ github.ref_name == 'master' }}
+          token: ${{ secrets.GITHUB_TOKEN }}
