@@ -632,6 +632,8 @@ export interface components {
             is_email_notifications_enabled: boolean;
             /** @default true */
             is_push_notifications_enabled: boolean;
+            /** @default false */
+            is_email_subscribe_popup_dismissed: boolean;
             /** @default true */
             POOL_CREATED: boolean;
             /** @default true */
@@ -930,7 +932,6 @@ export interface components {
             chart_data: components["schemas"]["PnlChartDataPointDto"][];
         };
         NotificationCountDto: {
-            /** @description Number of unread notifications */
             unread: number;
         };
         /** @enum {string} */
@@ -954,12 +955,9 @@ export interface components {
         /** @enum {string} */
         TransactionStatus: "SUCCESS" | "FAILED";
         TransactionHistoryItemDto: {
-            /** @description Transaction signature (unique identifier) */
             id: string;
             type: components["schemas"]["TransactionType"];
-            /** @description USDC amount (human-readable) */
             amount: number;
-            /** @description Other wallet address involved in transaction */
             counterparty: string;
             /** Format: date-time */
             timestamp: string;
@@ -967,9 +965,7 @@ export interface components {
         };
         TransactionHistoryResponseDto: {
             transactions: components["schemas"]["TransactionHistoryItemDto"][];
-            /** @description Whether there are more transactions to load */
             has_more: boolean;
-            /** @description Cursor for pagination (transaction signature) */
             next_cursor?: Record<string, never>;
         };
         /** @enum {string} */
@@ -1051,6 +1047,7 @@ export interface components {
             total_participants: number;
             last_winner_error?: Record<string, never> | null;
             best_return?: Record<string, never> | null;
+            worst_return?: Record<string, never> | null;
             user_rank?: Record<string, never> | null;
         };
         /** @enum {string} */
