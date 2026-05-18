@@ -454,30 +454,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Step 1: Build a claim-streak-reward transaction
-         * @description Returns an unsigned transaction that claims a streak reward; sign it and submit via `POST /transactions/claim-streak-reward/submit`.
+         * Claim a streak reward on-chain
+         * @description Claims a streak reward on-chain and returns the transaction signature.
          */
-        post: operations["TransactionsController_createClaimStreakRewardTransaction"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/transactions/claim-streak-reward/submit": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Step 2: Submit a signed claim-streak-reward transaction
-         * @description Submits the signed claim-streak-reward transaction with the original `proof`.
-         */
-        post: operations["TransactionsController_submitClaimStreakRewardTransaction"];
+        post: operations["TransactionsController_claimStreakRewardTransaction"];
         delete?: never;
         options?: never;
         head?: never;
@@ -799,6 +779,25 @@ export interface components {
             reward?: components["schemas"]["RewardDto"];
             streak?: components["schemas"]["StreakDto"];
         };
+        StreakWithRelationsDto: {
+            id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            streak_accumulator_account: string;
+            title: string;
+            /** @example 5 */
+            fee_percentage: number;
+            bump: number;
+            streak_count_required: number;
+            min_precision_score_required: number;
+            total_accumulated: number;
+            available_balance: number;
+            onchain_balance: number;
+            /** Format: date-time */
+            last_sync_at: string;
+        };
         PoolWithRelationsDto: {
             id: string;
             /** Format: date-time */
@@ -838,6 +837,7 @@ export interface components {
             resolution?: components["schemas"]["ResolutionDto"];
             image?: components["schemas"]["FileDto"];
             predictions?: components["schemas"]["PredictionWithRelationsDto"][];
+            streak?: components["schemas"]["StreakWithRelationsDto"];
         };
         CreateUserApiKeyDto: {
             name: string;
@@ -970,25 +970,6 @@ export interface components {
         };
         /** @enum {string} */
         StreakEvent: "NONE" | "QUALIFIED" | "RESET" | "REWARDED";
-        StreakWithRelationsDto: {
-            id: string;
-            /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            updated_at: string;
-            streak_accumulator_account: string;
-            title: string;
-            /** @example 5 */
-            fee_percentage: number;
-            bump: number;
-            streak_count_required: number;
-            min_precision_score_required: number;
-            total_accumulated: number;
-            available_balance: number;
-            onchain_balance: number;
-            /** Format: date-time */
-            last_sync_at: string;
-        };
         StreakRewardWithRelationsDto: {
             id: string;
             /** Format: date-time */
@@ -1026,7 +1007,7 @@ export interface components {
         /** @enum {string} */
         FilterPoolsBy: "ACTIVE" | "ENDED" | "RESOLVED" | "NOT_RESOLVED";
         /** @enum {string} */
-        ALL_POOL_RELATIONS: "user" | "resolution" | "image" | "predictions";
+        ALL_POOL_RELATIONS: "user" | "resolution" | "image" | "predictions" | "streak";
         TrepaRewardDto: {
             address: string;
             value: number;
@@ -1165,7 +1146,6 @@ export interface components {
         CreateWithdrawTransactionDto: {
             to_address: string;
             amount: number;
-            mint_address: string;
         };
         WithdrawTransactionDto: {
             transaction: string;
@@ -1180,17 +1160,8 @@ export interface components {
         SubmittedWithdrawTransactionDto: {
             signature: string;
         };
-        CreateClaimStreakRewardTransactionDto: {
-            streak_reward_id: string;
-        };
         ClaimStreakRewardTransactionDto: {
-            transaction: string;
-            proof: string;
-        };
-        SubmitClaimStreakRewardTransactionDto: {
             streak_reward_id: string;
-            signed_transaction: string;
-            proof: string;
         };
         StreakRewardDto: {
             id: string;
@@ -2026,7 +1997,7 @@ export interface operations {
             };
         };
     };
-    TransactionsController_createClaimStreakRewardTransaction: {
+    TransactionsController_claimStreakRewardTransaction: {
         parameters: {
             query?: never;
             header?: never;
@@ -2035,42 +2006,11 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CreateClaimStreakRewardTransactionDto"];
+                "application/json": components["schemas"]["ClaimStreakRewardTransactionDto"];
             };
         };
         responses: {
-            /** @description The claim streak reward transaction has been created successfully. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ClaimStreakRewardTransactionDto"];
-                };
-            };
-            /** @description No unclaimed streak reward found for this user. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    TransactionsController_submitClaimStreakRewardTransaction: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SubmitClaimStreakRewardTransactionDto"];
-            };
-        };
-        responses: {
-            /** @description The claim streak reward transaction has been submitted successfully. */
+            /** @description The streak reward has been claimed successfully on-chain. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -2079,7 +2019,7 @@ export interface operations {
                     "application/json": components["schemas"]["SubmittedClaimStreakRewardTransactionDto"];
                 };
             };
-            /** @description The streak reward has already been claimed or does not exist. */
+            /** @description No unclaimed streak reward found, or a claim is already in progress. */
             403: {
                 headers: {
                     [name: string]: unknown;
