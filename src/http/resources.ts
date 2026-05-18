@@ -170,25 +170,12 @@ export class StreaksResource extends Resource {
 	async claimReward(args: {
 		streakRewardId: string;
 	}): Promise<Schema<'SubmittedClaimStreakRewardTransactionDto'>> {
-		const privateKey = this.session.requirePrivateKey('streaks.claimReward');
-		const prepared = await this.session.request(
+		return this.session.request(
 			() =>
 				this.client.POST('/transactions/claim-streak-reward', {
 					body: { streak_reward_id: args.streakRewardId },
 				}),
-			'Failed to build the claim-streak-reward transaction',
-		);
-		const signed_transaction = await sign(prepared.transaction, privateKey);
-		return this.session.request(
-			() =>
-				this.client.POST('/transactions/claim-streak-reward/submit', {
-					body: {
-						streak_reward_id: args.streakRewardId,
-						signed_transaction,
-						proof: prepared.proof,
-					},
-				}),
-			'Failed to submit the claim-streak-reward transaction',
+			'Failed to claim the streak reward',
 		);
 	}
 }
