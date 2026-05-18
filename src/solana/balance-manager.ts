@@ -523,17 +523,18 @@ function describeChainedError(err: unknown): string {
 }
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
+	if (signal.aborted) return Promise.resolve();
 	return new Promise<void>((resolve) => {
-		if (signal.aborted) return resolve();
-		const timer = setTimeout(resolve, ms);
-		signal.addEventListener(
-			'abort',
-			() => {
-				clearTimeout(timer);
-				resolve();
-			},
-			{ once: true },
-		);
+		const done = (): void => {
+			signal.removeEventListener('abort', onAbort);
+			resolve();
+		};
+		const onAbort = (): void => {
+			clearTimeout(timer);
+			done();
+		};
+		const timer = setTimeout(done, ms);
+		signal.addEventListener('abort', onAbort, { once: true });
 	});
 }
 

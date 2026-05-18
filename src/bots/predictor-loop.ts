@@ -45,7 +45,7 @@ interface MachineCtx {
 	streakId: string;
 	pollIntervalMs: number;
 	postResolveBufferMs: number;
-	seen: Set<string>;
+	seenPoolId: string | null;
 	isColdStart: boolean;
 }
 
@@ -84,7 +84,7 @@ export async function runPredictorLoop(
 		pollIntervalMs: options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS,
 		postResolveBufferMs:
 			options.postResolveBufferMs ?? DEFAULT_POST_RESOLVE_BUFFER_MS,
-		seen: new Set<string>(),
+		seenPoolId: null,
 		isColdStart: true,
 	};
 
@@ -108,7 +108,7 @@ const advance = async (state: BotState, ctx: MachineCtx): Promise<BotState> => {
 			return { kind: 'polling' };
 
 		case 'skipping_in_flight_pool':
-			ctx.seen.add(state.pool.id);
+			ctx.seenPoolId = state.pool.id;
 			emit(
 				'skip',
 				lineForSkipped(
@@ -134,7 +134,7 @@ const advance = async (state: BotState, ctx: MachineCtx): Promise<BotState> => {
 		}
 
 		case 'predicting': {
-			ctx.seen.add(state.pool.id);
+			ctx.seenPoolId = state.pool.id;
 			const deadlineMs = new Date(state.pool.prediction_end_date).getTime();
 			await tryPredict(ctx, state.pool, deadlineMs);
 			return { kind: 'awaiting_end', pool: state.pool };
@@ -195,7 +195,7 @@ const classify = async (ctx: MachineCtx): Promise<BotState> => {
 	}
 	ctx.isColdStart = false;
 
-	if (ctx.seen.has(pool.id)) {
+	if (ctx.seenPoolId === pool.id) {
 		return { kind: 'awaiting_end', pool };
 	}
 
@@ -241,10 +241,10 @@ const tryPredict = async (
 	let decision: BotPredictDecision;
 
 	try {
-		decision = await Promise.race([
+		decision = await raceWithAbort(
 			options.predict(pool, ctx.publicCtx),
-			untilAborted(ctx.signal).then((): BotPredictDecision => null),
-		]);
+			ctx.signal,
+		);
 	} catch (err) {
 		emit(
 			'error',
@@ -367,12 +367,10 @@ const tryPredict = async (
 				};
 				let updateDecision: BotUpdatePredictionDecision;
 				try {
-					updateDecision = await Promise.race([
+					updateDecision = await raceWithAbort(
 						options.updatePrediction(submitted, ctx.publicCtx),
-						untilAborted(ctx.signal).then(
-							(): BotUpdatePredictionDecision => null,
-						),
-					]);
+						ctx.signal,
+					);
 				} catch (err) {
 					emit(
 						'error',
@@ -445,10 +443,31 @@ const tryPredict = async (
 	}
 };
 
-function untilAborted(signal: AbortSignal): Promise<void> {
-	if (signal.aborted) return Promise.resolve();
-	return new Promise<void>((resolve) => {
-		signal.addEventListener('abort', () => resolve(), { once: true });
+async function raceWithAbort<T>(
+	work: T | Promise<T>,
+	signal: AbortSignal,
+): Promise<T | null> {
+	if (signal.aborted) return null;
+	const workPromise = Promise.resolve(work);
+	return new Promise<T | null>((resolve, reject) => {
+		const onAbort = (): void => {
+			cleanup();
+			resolve(null);
+		};
+		const cleanup = (): void => {
+			signal.removeEventListener('abort', onAbort);
+		};
+		signal.addEventListener('abort', onAbort, { once: true });
+		workPromise.then(
+			(value) => {
+				cleanup();
+				resolve(value);
+			},
+			(err) => {
+				cleanup();
+				reject(err);
+			},
+		);
 	});
 }
 
