@@ -40,10 +40,7 @@ const waitUntilDeploySlot = async (
 	if (now >= deadlineMs || spanMs <= 0) return;
 
 	const targetMs = anchorMs + deployOffsetMs(poolId, index, spanMs, phase);
-	const waitMs = Math.min(
-		Math.max(0, targetMs - now),
-		deadlineMs - now,
-	);
+	const waitMs = Math.min(Math.max(0, targetMs - now), deadlineMs - now);
 
 	if (waitMs > 0) {
 		await new Promise((resolve) => setTimeout(resolve, waitMs));
