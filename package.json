@@ -2,14 +2,13 @@
   "name": "@trepa/sdk",
   "version": "0.2.7",
   "packageManager": "pnpm@10.33.4",
-  "description": "Typed TypeScript SDK for the Trepa API. Generated from the OpenAPI spec, with cookie-aware session handling and Solana transaction signing helpers.",
+  "description": "Typed TypeScript SDK for the Trepa API",
   "keywords": [
-    "trepa",
-    "prediction-market",
-    "solana",
+    "typescript",
     "sdk",
     "openapi",
-    "typescript"
+    "solana",
+    "trepa"
   ],
   "homepage": "https://github.com/TrepaOrg/trepa-sdk#readme",
   "documentation": "https://docs.trepa.io/developers/introduction",
