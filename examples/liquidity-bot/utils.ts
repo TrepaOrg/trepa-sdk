@@ -1,6 +1,11 @@
-const INITIAL_DEPLOY_DEADLINE_MS = 15_000;
+const PREDICT_WINDOW_MS = 10_000;
 
-const INITIAL_DEPLOY_SPAN_MS = 14_000;
+const UPDATE_WINDOW_END_MS = 25_000;
+
+const SLOT_BUFFER_MS = 1_000;
+
+const slotSpanMs = (windowMs: number): number =>
+	Math.max(0, windowMs - SLOT_BUFFER_MS);
 
 const fnv1a = (str: string): number => {
 	let h = 2_166_136_261;
@@ -11,30 +16,72 @@ const fnv1a = (str: string): number => {
 	return h >>> 0;
 };
 
-const initialDeployOffsetMs = (poolId: string, index: number): number => {
-	const u = fnv1a(`${poolId}:deploy:${index}`);
-	return Math.floor((u / 0x1_0000_0000) * INITIAL_DEPLOY_SPAN_MS);
+type DeployPhase = 'predict' | 'update';
+
+const deployOffsetMs = (
+	poolId: string,
+	index: number,
+	spanMs: number,
+	phase: DeployPhase,
+): number => {
+	const u = fnv1a(`${poolId}:${phase}:${index}`);
+	return Math.floor((u / 0x1_0000_0000) * spanMs);
 };
 
-export const waitUntilInitialDeploySlot = async (
-	pool: { id: string; prediction_start_date: string },
+const waitUntilDeploySlot = async (
+	anchorMs: number,
+	deadlineMs: number,
+	spanMs: number,
+	poolId: string,
 	index: number,
+	phase: DeployPhase,
 ): Promise<void> => {
-	const startMs = new Date(pool.prediction_start_date).getTime();
-	const deployEndMs = startMs + INITIAL_DEPLOY_DEADLINE_MS;
 	const now = Date.now();
+	if (now >= deadlineMs || spanMs <= 0) return;
 
-	if (now >= deployEndMs) return;
-
-	const targetMs = startMs + initialDeployOffsetMs(pool.id, index);
+	const targetMs = anchorMs + deployOffsetMs(poolId, index, spanMs, phase);
 	const waitMs = Math.min(
 		Math.max(0, targetMs - now),
-		deployEndMs - now,
+		deadlineMs - now,
 	);
 
 	if (waitMs > 0) {
 		await new Promise((resolve) => setTimeout(resolve, waitMs));
 	}
+};
+
+export const waitUntilPredictSlot = async (
+	pool: { id: string; prediction_start_date: string },
+	index: number,
+): Promise<void> => {
+	const startMs = new Date(pool.prediction_start_date).getTime();
+	await waitUntilDeploySlot(
+		startMs,
+		startMs + PREDICT_WINDOW_MS,
+		slotSpanMs(PREDICT_WINDOW_MS),
+		pool.id,
+		index,
+		'predict',
+	);
+};
+
+export const waitUntilUpdateSlot = async (
+	pool: { id: string; prediction_start_date: string },
+	index: number,
+): Promise<void> => {
+	const startMs = new Date(pool.prediction_start_date).getTime();
+	const deadlineMs = startMs + UPDATE_WINDOW_END_MS;
+	const anchorMs = startMs + UPDATE_WINDOW_END_MS - PREDICT_WINDOW_MS;
+	const spanMs = slotSpanMs(PREDICT_WINDOW_MS);
+
+	await waitUntilDeploySlot(
+		anchorMs,
+		deadlineMs,
+		spanMs,
+		pool.id,
+		index,
+		'update',
+	);
 };
 
 export const fetchBtcPrice = async (): Promise<number> => {

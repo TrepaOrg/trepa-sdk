@@ -4,19 +4,18 @@ import {
 	fetchBtcPrice,
 	fetchBtcStdLogReturns,
 	inverseNormalCdf,
-	waitUntilInitialDeploySlot,
+	waitUntilPredictSlot,
+	waitUntilUpdateSlot,
 } from './utils.ts';
 
 const trepa = new Trepa({
 	credentials: credentialsFromEnv(),
 });
 
-const UPDATE_LEAD_TIME_MS = 10_000;
-
 await trepa.bots.run(({ index, count }) => ({
 	pollIntervalMs: 1_000,
 	predict: async (pool) => {
-		await waitUntilInitialDeploySlot(pool, index);
+		await waitUntilPredictSlot(pool, index);
 
 		const [price, stdLogReturns] = await Promise.all([
 			fetchBtcPrice(),
@@ -41,13 +40,9 @@ await trepa.bots.run(({ index, count }) => ({
 		return { value, stake };
 	},
 	updatePrediction: async (prediction) => {
+		await waitUntilUpdateSlot(prediction.pool, index);
+
 		const closeTs = new Date(prediction.pool.prediction_end_date).getTime();
-		const waitMs = closeTs - UPDATE_LEAD_TIME_MS - Date.now();
-
-		if (waitMs > 0) {
-			await new Promise((resolve) => setTimeout(resolve, waitMs));
-		}
-
 		if (Date.now() >= closeTs) {
 			return null;
 		}
