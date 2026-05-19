@@ -1008,7 +1008,7 @@ export interface components {
         FilterPoolsBy: "ACTIVE" | "ENDED" | "RESOLVED" | "NOT_RESOLVED";
         /** @enum {string} */
         ALL_POOL_RELATIONS: "user" | "resolution" | "image" | "predictions" | "streak";
-        TrepaRewardDto: {
+        MechanismRewardDto: {
             address: string;
             value: number;
             return: number;
@@ -1021,9 +1021,9 @@ export interface components {
             /** Format: date-time */
             reference_date: string;
             outcome: number;
-            winners: components["schemas"]["TrepaRewardDto"][];
-            losers: components["schemas"]["TrepaRewardDto"][];
-            refunds: components["schemas"]["TrepaRewardDto"][];
+            winners: components["schemas"]["MechanismRewardDto"][];
+            losers: components["schemas"]["MechanismRewardDto"][];
+            refunds: components["schemas"]["MechanismRewardDto"][];
             median: number;
             total_participants: number;
             last_winner_error?: Record<string, never> | null;
@@ -1078,7 +1078,25 @@ export interface components {
             total: number;
             user_result: components["schemas"]["UserResultDto"];
         };
-        WinningRangeDto: {
+        MechanismPayoutSampleDto: {
+            outcome: number;
+            payout: number;
+        };
+        MechanismUserPayoutSimulationDto: {
+            address: string;
+            stake: number;
+            prediction: number;
+            samples: components["schemas"]["MechanismPayoutSampleDto"][];
+        };
+        MechanismPayoutSimulationDto: {
+            outcome_center: number;
+            simulation_range_min: number;
+            simulation_range_max: number;
+            sample_count: number;
+            users: components["schemas"]["MechanismUserPayoutSimulationDto"][];
+        };
+        MechanismUserWinningRangeDto: {
+            address: string;
             value: number;
             min: Record<string, never> | null;
             max: Record<string, never> | null;
