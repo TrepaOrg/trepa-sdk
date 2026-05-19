@@ -1,6 +1,6 @@
-const PREDICT_WINDOW_MS = 15_000;
+const PREDICT_WINDOW_MS = 20_000;
 
-const UPDATE_WINDOW_END_MS = 25_000;
+const UPDATE_WINDOW_END_MS = 30_000;
 
 const SLOT_BUFFER_MS = 1_000;
 
@@ -70,9 +70,11 @@ export const waitUntilUpdateSlot = async (
 	index: number,
 ): Promise<void> => {
 	const startMs = new Date(pool.prediction_start_date).getTime();
+	const tailMs = UPDATE_WINDOW_END_MS - PREDICT_WINDOW_MS;
+	const updateWindowMs = tailMs / 2;
 	const deadlineMs = startMs + UPDATE_WINDOW_END_MS;
-	const anchorMs = startMs + UPDATE_WINDOW_END_MS - PREDICT_WINDOW_MS;
-	const spanMs = slotSpanMs(PREDICT_WINDOW_MS);
+	const anchorMs = startMs + PREDICT_WINDOW_MS + updateWindowMs;
+	const spanMs = slotSpanMs(updateWindowMs);
 
 	await waitUntilDeploySlot(
 		anchorMs,
