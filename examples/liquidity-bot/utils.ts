@@ -1,3 +1,55 @@
+export const INITIAL_DEPLOY_DEADLINE_MS = 10_000;
+
+const INITIAL_DEPLOY_SPAN_MS = 9_000;
+
+const INITIAL_SALVO_JITTER_MS = 800;
+
+const fnv1a = (str: string): number => {
+	let h = 2_166_136_261;
+	for (let i = 0; i < str.length; i++) {
+		h ^= str.charCodeAt(i);
+		h = Math.imul(h, 1_677_761_9);
+	}
+	return h >>> 0;
+};
+
+const initialSalvoCount = (botCount: number): number =>
+	Math.min(3, Math.max(1, Math.ceil(botCount / 4)));
+
+const initialSalvoIndex = (
+	poolId: string,
+	index: number,
+	k: number,
+): number => (fnv1a(`${poolId}:${index}`) + index * 9_973) % k;
+
+const initialSalvoJitterMs = (poolId: string, index: number): number =>
+	fnv1a(`${poolId}:jitter:${index}`) % INITIAL_SALVO_JITTER_MS;
+
+export const waitUntilInitialSalvoSlot = async (
+	pool: { id: string; prediction_start_date: string },
+	index: number,
+	count: number,
+): Promise<void> => {
+	const startMs = new Date(pool.prediction_start_date).getTime();
+	const deployEndMs = startMs + INITIAL_DEPLOY_DEADLINE_MS;
+	const now = Date.now();
+
+	if (now >= deployEndMs) return;
+
+	const k = initialSalvoCount(count);
+	const salvo = initialSalvoIndex(pool.id, index, k);
+	const baseMs = k <= 1 ? 0 : (salvo / k) * INITIAL_DEPLOY_SPAN_MS;
+	const targetMs = startMs + baseMs + initialSalvoJitterMs(pool.id, index);
+	const waitMs = Math.min(
+		Math.max(0, targetMs - now),
+		deployEndMs - now,
+	);
+
+	if (waitMs > 0) {
+		await new Promise((resolve) => setTimeout(resolve, waitMs));
+	}
+};
+
 export const fetchBtcPrice = async (): Promise<number> => {
 	const res = await fetch(
 		'https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT',
