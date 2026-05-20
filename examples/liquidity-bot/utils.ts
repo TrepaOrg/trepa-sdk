@@ -1,8 +1,4 @@
-const PREDICT_WINDOW_MS = 15_000;
-
-const UPDATE_WINDOW_START_MS = 20_000;
-
-const UPDATE_WINDOW_END_MS = 25_000;
+const PREDICT_WINDOW_MS = 20_000;
 
 const SLOT_BUFFER_MS = 1_000;
 
@@ -18,15 +14,12 @@ const fnv1a = (str: string): number => {
 	return h >>> 0;
 };
 
-type DeployPhase = 'predict' | 'update';
-
 const deployOffsetMs = (
 	poolId: string,
 	index: number,
 	spanMs: number,
-	phase: DeployPhase,
 ): number => {
-	const u = fnv1a(`${poolId}:${phase}:${index}`);
+	const u = fnv1a(`${poolId}:predict:${index}`);
 	return Math.floor((u / 0x1_0000_0000) * spanMs);
 };
 
@@ -36,12 +29,11 @@ const waitUntilDeploySlot = async (
 	spanMs: number,
 	poolId: string,
 	index: number,
-	phase: DeployPhase,
 ): Promise<void> => {
 	const now = Date.now();
 	if (now >= deadlineMs || spanMs <= 0) return;
 
-	const targetMs = anchorMs + deployOffsetMs(poolId, index, spanMs, phase);
+	const targetMs = anchorMs + deployOffsetMs(poolId, index, spanMs);
 	const waitMs = Math.min(Math.max(0, targetMs - now), deadlineMs - now);
 
 	if (waitMs > 0) {
@@ -60,27 +52,6 @@ export const waitUntilPredictSlot = async (
 		slotSpanMs(PREDICT_WINDOW_MS),
 		pool.id,
 		index,
-		'predict',
-	);
-};
-
-export const waitUntilUpdateSlot = async (
-	pool: { id: string; prediction_start_date: string },
-	index: number,
-): Promise<void> => {
-	const startMs = new Date(pool.prediction_start_date).getTime();
-	const updateWindowMs = UPDATE_WINDOW_END_MS - UPDATE_WINDOW_START_MS;
-	const deadlineMs = startMs + UPDATE_WINDOW_END_MS;
-	const anchorMs = startMs + UPDATE_WINDOW_START_MS;
-	const spanMs = slotSpanMs(updateWindowMs);
-
-	await waitUntilDeploySlot(
-		anchorMs,
-		deadlineMs,
-		spanMs,
-		pool.id,
-		index,
-		'update',
 	);
 };
 

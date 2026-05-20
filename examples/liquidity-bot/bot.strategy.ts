@@ -5,7 +5,6 @@ import {
 	fetchBtcStdLogReturns,
 	inverseNormalCdf,
 	waitUntilPredictSlot,
-	waitUntilUpdateSlot,
 } from './utils.ts';
 
 const trepa = new Trepa({
@@ -38,32 +37,5 @@ await trepa.bots.run(({ index, count }) => ({
 		const stake = pool.min_stake;
 
 		return { value, stake };
-	},
-	updatePrediction: async (prediction) => {
-		await waitUntilUpdateSlot(prediction.pool, index);
-
-		const closeTs = new Date(prediction.pool.prediction_end_date).getTime();
-		if (Date.now() >= closeTs) {
-			return null;
-		}
-
-		const resolutionMinutes = Math.max(
-			0,
-			(new Date(prediction.pool.reference_date).getTime() - closeTs) / 60_000,
-		);
-
-		const [price, stdLogReturns] = await Promise.all([
-			fetchBtcPrice(),
-			fetchBtcStdLogReturns(),
-		]);
-
-		const sigma = price * stdLogReturns * Math.sqrt(resolutionMinutes);
-
-		const quantile = (index + 0.5) / count;
-		const offset = sigma * inverseNormalCdf(quantile);
-
-		const value = price + offset;
-
-		return { value };
 	},
 }));
