@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
+
 import { FileActionSink } from './sinks';
 import type {
 	ActionLoggerConfig,
@@ -24,7 +26,13 @@ interface ScopeFrame {
 
 let enabled = true;
 let sinks: ActionSink[] = [new FileActionSink()];
-const scopeStack: ScopeFrame[] = [];
+
+/** Per-async-task stack so parallel swarm bots do not nest each other's scopes. */
+const scopeStore = new AsyncLocalStorage<ScopeFrame[]>();
+
+function getStack(): ScopeFrame[] {
+	return scopeStore.getStore() ?? [];
+}
 
 export function configureActionLogger(config: ActionLoggerConfig = {}): void {
 	if (config.enabled !== undefined) {
@@ -40,7 +48,7 @@ export function configureActionLogger(config: ActionLoggerConfig = {}): void {
 }
 
 export function isActionLoggingActive(): boolean {
-	return enabled && scopeStack.length > 0;
+	return enabled && getStack().length > 0;
 }
 
 export function getActiveTraceHeaders(): {
@@ -70,7 +78,8 @@ export async function runScope<T>(
 		return fn();
 	}
 
-	const parent = currentFrame();
+	const stack = getStack();
+	const parent = stack[stack.length - 1];
 	const frame: ScopeFrame = {
 		traceId: parent?.traceId ?? crypto.randomUUID(),
 		path: parent ? [...parent.path, scope] : [scope],
@@ -79,27 +88,27 @@ export async function runScope<T>(
 		startedAt: performance.now(),
 	};
 
-	scopeStack.push(frame);
-	let ok = true;
-	let caught: unknown;
-	try {
-		return await fn();
-	} catch (error) {
-		ok = false;
-		caught = error;
-		throw error;
-	} finally {
-		scopeStack.pop();
-		record(
-			frame,
-			'total',
-			performance.now() - frame.startedAt,
-			ok,
-			meta,
-			caught,
-		);
-		await flush(frame.events);
-	}
+	return scopeStore.run([...stack, frame], async () => {
+		let ok = true;
+		let caught: unknown;
+		try {
+			return await fn();
+		} catch (error) {
+			ok = false;
+			caught = error;
+			throw error;
+		} finally {
+			record(
+				frame,
+				'total',
+				performance.now() - frame.startedAt,
+				ok,
+				meta,
+				caught,
+			);
+			await flush(frame.events);
+		}
+	});
 }
 
 /**
@@ -161,7 +170,8 @@ export function logHttpAction(
 }
 
 function currentFrame(): ScopeFrame | undefined {
-	return scopeStack[scopeStack.length - 1];
+	const stack = getStack();
+	return stack[stack.length - 1];
 }
 
 function record(
