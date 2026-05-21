@@ -3,7 +3,7 @@ import { dirname, resolve } from 'node:path';
 
 import type { ActionRecord, ActionSink } from './types';
 
-const DEFAULT_LOG_PATH = 'logs/bot-actions.jsonl';
+const DEFAULT_LOG_PATH = 'logs.jsonl';
 
 export class FileActionSink implements ActionSink {
 	private writeChain: Promise<void> = Promise.resolve();
