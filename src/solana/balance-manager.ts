@@ -25,8 +25,10 @@ import {
 } from '@solana-program/token';
 
 import type { BalanceManagerConfig } from './balance-manager-config';
+import { startMasterWalletHudMirror } from './wallet-hud';
 import type { BotCredentials } from '../bots/types';
 import { ensureTrepaEnvLoaded } from '../config/env-load';
+import { TrepaError } from '../core/errors';
 import type { Trepa } from '../http/trepa';
 import {
 	trepaLog,
@@ -35,7 +37,6 @@ import {
 	writeSwarmMetaLine,
 } from '../logging/format';
 import { sendAndConfirmTransactionFactory } from './vendor/send-and-confirm-transaction';
-import { startMasterWalletHudMirror } from './wallet-hud';
 
 type SendAndConfirmSigned = ReturnType<typeof sendAndConfirmTransactionFactory>;
 
@@ -118,6 +119,11 @@ function resolveMasterPrivateKey(): string {
 	return '';
 }
 
+/** Whether `TREPA_MASTER_PRIVATE_KEY` is set (balance manager sidecar). */
+export function hasMasterFundingKey(): boolean {
+	return resolveMasterPrivateKey() !== '';
+}
+
 export function balanceManagerShutdownWaitMs(): number {
 	return BALANCE_MANAGER_SHUTDOWN_WAIT_MS;
 }
@@ -152,7 +158,11 @@ async function runFunderLoop(
 			policy,
 		);
 	} catch (err) {
-		trepaLog.error(`bootstrap failed — ${describeChainedError(err)}`);
+		trepaLog.error(`bootstrap failed — ${describeBootstrapError(err)}`);
+		trepaLog.error(
+			`  API ${trepa.baseUrl} · RPC ${trepa.solanaRpcUrl} · ` +
+				'check TREPA_API_KEY (first bot credential) and TREPA_MASTER_PRIVATE_KEY',
+		);
 		return;
 	}
 
@@ -205,11 +215,33 @@ async function bootstrapFunder(
 	masterPrivateKey: string,
 	policy: ResolvedBalancePolicy,
 ): Promise<{ ctx: FunderCtx; bots: BotWallet[] }> {
-	const [master, ...botSigners] = await Promise.all([
-		createSignerFromBase58(masterPrivateKey),
-		...credentials.map((c) => createSignerFromBase58(c.privateKey)),
-	]);
-	const { mint, decimals } = await fetchStakeMint(trepa);
+	let master: KeyPairSigner<string>;
+	let botSigners: KeyPairSigner<string>[];
+	try {
+		[master, ...botSigners] = await Promise.all([
+			createSignerFromBase58(masterPrivateKey),
+			...credentials.map((c) => createSignerFromBase58(c.privateKey)),
+		]);
+	} catch (err) {
+		throw bootstrapStepError('load master/bot keypairs', err);
+	}
+
+	try {
+		await trepa.auth.me();
+	} catch (err) {
+		throw bootstrapStepError(
+			`Trepa API session at ${trepa.baseUrl} (needs valid TREPA_API_KEY on the first bot credential)`,
+			err,
+		);
+	}
+
+	let mint: Address;
+	let decimals: number;
+	try {
+		({ mint, decimals } = await fetchStakeMint(trepa));
+	} catch (err) {
+		throw bootstrapStepError('GET /pools to resolve stake mint', err);
+	}
 
 	const rpc = createSolanaRpc(trepa.solanaRpcUrl);
 	const rpcSubscriptions = createSolanaRpcSubscriptions(
@@ -231,9 +263,15 @@ async function bootstrapFunder(
 
 	const solTargetLamports = solToLamports(policy.solTarget);
 	const masterSolReserveLamports = solToLamports(policy.masterSolReserve);
-	const rentExemptLamports = await rpc
-		.getMinimumBalanceForRentExemption(0n)
-		.send();
+	let rentExemptLamports: bigint;
+	try {
+		rentExemptLamports = await rpc.getMinimumBalanceForRentExemption(0n).send();
+	} catch (err) {
+		throw bootstrapStepError(
+			`Solana RPC at ${trepa.solanaRpcUrl} (getMinimumBalanceForRentExemption)`,
+			err,
+		);
+	}
 	const solFloorLamports =
 		solTargetLamports > rentExemptLamports
 			? solTargetLamports
@@ -520,6 +558,21 @@ function describeChainedError(err: unknown): string {
 		e = e.cause;
 	}
 	return parts.length > 0 ? parts.join(' → ') : String(err);
+}
+
+function describeBootstrapError(err: unknown): string {
+	if (err instanceof TrepaError) {
+		const status = err.status > 0 ? `HTTP ${err.status}` : 'request failed';
+		return `${status}: ${err.message}`;
+	}
+	return describeChainedError(err);
+}
+
+function bootstrapStepError(step: string, cause: unknown): Error {
+	const detail = describeBootstrapError(cause);
+	return new Error(`${step}: ${detail}`, {
+		cause: cause instanceof Error ? cause : undefined,
+	});
 }
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {

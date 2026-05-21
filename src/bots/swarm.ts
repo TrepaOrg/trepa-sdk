@@ -28,6 +28,7 @@ import { setTrepaInkAbortOnExit } from '../logging/log-ink';
 import {
 	balanceManagerShutdownWaitMs,
 	type BalanceManagerConfig,
+	hasMasterFundingKey,
 	runBalanceManagerSidecar,
 } from '../solana/balance-manager';
 
@@ -180,7 +181,7 @@ export class Bots {
 			}
 		}
 		const balanceManagerTask =
-			this.trepaForBalanceManager !== undefined
+			this.trepaForBalanceManager !== undefined && hasMasterFundingKey()
 				? runBalanceManagerSidecar(
 						this.trepaForBalanceManager,
 						this.credentials,
@@ -190,8 +191,9 @@ export class Bots {
 				: Promise.resolve();
 
 		try {
-			await Promise.all(
-				this.credentials.map(async (creds, index) => {
+			await Promise.all([
+				balanceManagerTask,
+				...this.credentials.map(async (creds, index) => {
 					const slot: BotSlot = { index, count };
 					if (this.sessionStaggerMs > 0 && index > 0) {
 						await staggerFirstRequest(
@@ -224,7 +226,7 @@ export class Bots {
 						}
 					}
 				}),
-			);
+			]);
 		} catch (err) {
 			if (!swarmAc.signal.aborted && !isLikelyAbortError(err)) throw err;
 		} finally {

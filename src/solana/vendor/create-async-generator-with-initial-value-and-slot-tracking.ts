@@ -33,6 +33,7 @@ export async function* createAsyncGeneratorWithInitialValueAndSlotTracking<
 >): AsyncGenerator<SolanaRpcResponse<TItem>> {
 	if (abortSignal.aborted) return;
 
+	const MAX_PENDING_ITEMS = 32;
 	let lastUpdateSlot = -1n;
 
 	const queue: SolanaRpcResponse<TItem>[] = [];
@@ -78,6 +79,9 @@ export async function* createAsyncGeneratorWithInitialValueAndSlotTracking<
 			waitingReject = null;
 			resolve({ done: false, value: item });
 		} else {
+			if (queue.length >= MAX_PENDING_ITEMS) {
+				queue.shift();
+			}
 			queue.push(item);
 		}
 	}

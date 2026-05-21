@@ -34,6 +34,12 @@ const messageFromBody = (body: unknown, fallback: string): string => {
 		if (typeof shape.message === 'string' && shape.message) {
 			return shape.message;
 		}
+		if (typeof shape.message === 'object' && shape.message !== null) {
+			const nested = shape.message as ErrorBodyShape;
+			if (typeof nested.message === 'string' && nested.message) {
+				return nested.message;
+			}
+		}
 		if (Array.isArray(shape.message) && shape.message.length > 0) {
 			return shape.message
 				.map((m) => (typeof m === 'string' ? m : JSON.stringify(m)))

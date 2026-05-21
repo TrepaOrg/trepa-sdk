@@ -1,6 +1,4 @@
 import { address, type Address } from '@solana/addresses';
-import { createSolanaRpc } from '@solana/rpc';
-import { createSolanaRpcSubscriptions } from '@solana/rpc-subscriptions';
 import type {
 	Lamports,
 	TokenAmount,
@@ -13,6 +11,7 @@ import {
 	TOKEN_PROGRAM_ADDRESS,
 } from '@solana-program/token';
 
+import { sharedSolanaRpc, sharedSolanaRpcSubscriptions } from './rpc-pool';
 import type { components } from '../api/schema';
 import type { TrepaClient } from '../http/client';
 import { formatNumber } from '../logging/format';
@@ -91,8 +90,8 @@ async function runBotWalletHudMirror(opts: {
 	});
 
 	const wallet = address(opts.me.wallet_address);
-	const rpc = createSolanaRpc(opts.rpcUrl);
-	const subs = createSolanaRpcSubscriptions(opts.wsUrl);
+	const rpc = sharedSolanaRpc(opts.rpcUrl);
+	const subs = sharedSolanaRpcSubscriptions(opts.wsUrl);
 
 	let stakeMint: string | undefined;
 	let stakeDecimals = 6;
@@ -206,8 +205,8 @@ async function runMasterWalletHudMirror(opts: {
 	wsUrl: string;
 	signal: AbortSignal;
 }): Promise<void> {
-	const rpc = createSolanaRpc(opts.rpcUrl);
-	const subs = createSolanaRpcSubscriptions(opts.wsUrl);
+	const rpc = sharedSolanaRpc(opts.rpcUrl);
+	const subs = sharedSolanaRpcSubscriptions(opts.wsUrl);
 	const wallet = opts.wallet;
 	const ata = opts.masterAta;
 

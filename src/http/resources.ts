@@ -180,8 +180,6 @@ export class PredictionsResource extends Resource {
 		value: number;
 	}): Promise<Schema<'SubmittedPredictionTransactionDto'>> {
 		return runSessionPresignedFlow(this.session, {
-			flow: 'prediction.create',
-			meta: { pool_id: args.poolId },
 			operation: 'predictions.create',
 			build: () =>
 				this.client.POST('/transactions/prediction', {
@@ -209,8 +207,6 @@ export class PredictionsResource extends Resource {
 		value: number;
 	}): Promise<Schema<'SubmittedPredictionTransactionDto'>> {
 		return runSessionPresignedFlow(this.session, {
-			flow: 'prediction.update',
-			meta: { prediction_id: args.predictionId },
 			operation: 'predictions.update',
 			build: () =>
 				this.client.POST('/transactions/prediction/update', {
@@ -234,8 +230,6 @@ export class PredictionsResource extends Resource {
 		stake: number;
 	}): Promise<Schema<'SubmittedPredictionTransactionDto'>> {
 		return runSessionPresignedFlow(this.session, {
-			flow: 'stake.update',
-			meta: { prediction_id: args.predictionId },
 			operation: 'predictions.updateStake',
 			build: () =>
 				this.client.POST('/transactions/stake/update', {
@@ -261,8 +255,6 @@ export class RewardsResource extends Resource {
 		rewardId: string;
 	}): Promise<Schema<'SubmittedClaimTransactionDto'>> {
 		return runSessionPresignedFlow(this.session, {
-			flow: 'claim.reward',
-			meta: { pool_id: args.poolId, reward_id: args.rewardId },
 			operation: 'rewards.claim',
 			build: () =>
 				this.client.POST('/transactions/claim-reward', {
@@ -289,8 +281,6 @@ export class WithdrawalsResource extends Resource {
 		mintAddress: string;
 	}): Promise<Schema<'SubmittedWithdrawTransactionDto'>> {
 		return runSessionPresignedFlow(this.session, {
-			flow: 'withdraw',
-			meta: { to_address: args.toAddress, amount: args.amount },
 			operation: 'withdrawals.create',
 			build: () =>
 				this.client.POST('/transactions/withdraw', {
