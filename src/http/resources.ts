@@ -1,6 +1,6 @@
+import { runSessionPresignedFlow } from './presigned-transaction';
 import type { Session } from './session';
 import type { components, operations } from '../api/schema';
-import { runSessionPresignedFlow } from './presigned-transaction';
 
 type Schema<K extends keyof components['schemas']> = components['schemas'][K];
 type Query<K extends keyof operations> = operations[K] extends {

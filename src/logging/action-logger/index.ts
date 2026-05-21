@@ -1,7 +1,17 @@
-import { CompositeActionSink, FileActionSink } from './sinks';
-import type { ActionLoggerConfig, ActionMeta, ActionRecord, ActionSink } from './types';
+import { FileActionSink } from './sinks';
+import type {
+	ActionLoggerConfig,
+	ActionMeta,
+	ActionRecord,
+	ActionSink,
+} from './types';
 
-export type { ActionLoggerConfig, ActionMeta, ActionRecord, ActionSink } from './types';
+export type {
+	ActionLoggerConfig,
+	ActionMeta,
+	ActionRecord,
+	ActionSink,
+} from './types';
 export { CompositeActionSink, FileActionSink } from './sinks';
 
 interface ScopeFrame {
@@ -80,7 +90,14 @@ export async function runScope<T>(
 		throw error;
 	} finally {
 		scopeStack.pop();
-		record(frame, 'total', performance.now() - frame.startedAt, ok, meta, caught);
+		record(
+			frame,
+			'total',
+			performance.now() - frame.startedAt,
+			ok,
+			meta,
+			caught,
+		);
 		await flush(frame.events);
 	}
 }

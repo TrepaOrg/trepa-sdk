@@ -22,9 +22,9 @@ import type {
 	BotUpdatePredictionDecision,
 	OpenPool,
 } from './types';
-import { logAction, runScope } from '../logging/action-logger';
 import { TrepaError } from '../core/errors';
 import { TrepaClient } from '../http/client';
+import { logAction, runScope } from '../logging/action-logger';
 import { trepaStdoutIsInteractive } from '../logging/format';
 import { startBotWalletHudMirror } from '../solana/wallet-hud';
 
@@ -252,154 +252,14 @@ const tryPredict = async (
 		slot: ctx.publicCtx.slot.index,
 	};
 
-	await runScope('bot.tryPredict', async () => {
-		let decision: BotPredictDecision;
+	await runScope(
+		'bot.tryPredict',
+		async () => {
+			let decision: BotPredictDecision;
 
-		try {
-			decision = await logAction('strategy.predict', () =>
-				raceWithAbort(options.predict(pool, ctx.publicCtx), ctx.signal),
-			);
-		} catch (err) {
-			emit(
-				'error',
-				lineForError(options, err, ctx.publicCtx.slot),
-				ctx.publicCtx.slot,
-			);
-			emit(
-				'skip',
-				lineForSkipped(
-					options,
-					{ pool, reason: 'predict-threw' },
-					ctx.publicCtx.slot,
-				),
-				ctx.publicCtx.slot,
-			);
-			return;
-		}
-
-		if (ctx.signal.aborted) {
-			decision = null;
-		}
-
-		if (decision === null) {
-			emit(
-				'skip',
-				lineForSkipped(
-					options,
-					{
-						pool,
-						reason: ctx.signal.aborted
-							? 'predict-aborted'
-							: 'predict-returned-null',
-					},
-					ctx.publicCtx.slot,
-				),
-				ctx.publicCtx.slot,
-			);
-			return;
-		}
-
-		if (!Number.isFinite(decision.value)) {
-			emit(
-				'skip',
-				lineForSkipped(
-					options,
-					{ pool, reason: 'invalid-value' },
-					ctx.publicCtx.slot,
-				),
-				ctx.publicCtx.slot,
-			);
-			return;
-		}
-
-		if (!Number.isFinite(decision.stake)) {
-			emit(
-				'skip',
-				lineForSkipped(
-					options,
-					{ pool, reason: 'invalid-stake' },
-					ctx.publicCtx.slot,
-				),
-				ctx.publicCtx.slot,
-			);
-			return;
-		}
-
-		if (Date.now() >= deadlineMs) {
-			emit(
-				'skip',
-				lineForSkipped(
-					options,
-					{ pool, reason: 'predict-too-late' },
-					ctx.publicCtx.slot,
-				),
-				ctx.publicCtx.slot,
-			);
-			return;
-		}
-
-		const value = snapOutcomeToPool(decision.value, pool);
-		const stake = Math.min(
-			Math.max(decision.stake, pool.min_stake),
-			pool.max_stake,
-		);
-
-		try {
-			await logAction(
-				'predictions.create',
-				() => ctx.client.predictions.create({ poolId: pool.id, stake, value }),
-				scopeMeta,
-			);
-			emit(
-				'pred',
-				lineForPredicted(options, { pool, value, stake }, ctx.publicCtx.slot),
-				ctx.publicCtx.slot,
-			);
-
-			if (!options.updatePrediction) {
-				return;
-			}
-
-			const predictionId = await logAction('resolvePredictionId', () =>
-				resolvePredictionIdForPool(
-					ctx.client,
-					ctx.publicCtx.me.id,
-					pool.id,
-					ctx.signal,
-				),
-			);
-
-			if (!predictionId) {
-				emit(
-					'error',
-					lineForError(
-						options,
-						new TrepaError(
-							'Could not resolve prediction id for updatePrediction ' +
-								'(active prediction for this pool not found after submit).',
-							{ status: 0, code: 'prediction_id_unresolved' },
-						),
-						ctx.publicCtx.slot,
-					),
-					ctx.publicCtx.slot,
-				);
-				return;
-			}
-
-			const submitted: BotSubmittedPredictionContext = {
-				pool,
-				value,
-				stake,
-				predictionId,
-			};
-
-			let updateDecision: BotUpdatePredictionDecision;
 			try {
-				updateDecision = await logAction('strategy.updatePrediction', () =>
-					raceWithAbort(
-						options.updatePrediction!(submitted, ctx.publicCtx),
-						ctx.signal,
-					),
+				decision = await logAction('strategy.predict', () =>
+					raceWithAbort(options.predict(pool, ctx.publicCtx), ctx.signal),
 				);
 			} catch (err) {
 				emit(
@@ -407,29 +267,11 @@ const tryPredict = async (
 					lineForError(options, err, ctx.publicCtx.slot),
 					ctx.publicCtx.slot,
 				);
-				updateDecision = null;
-			}
-
-			if (ctx.signal.aborted) {
-				updateDecision = null;
-			}
-
-			if (updateDecision === null) {
-				return;
-			}
-
-			if (!Number.isFinite(updateDecision.value)) {
 				emit(
-					'error',
-					lineForError(
+					'skip',
+					lineForSkipped(
 						options,
-						new TrepaError(
-							'updatePrediction returned a non-finite value.',
-							{
-								status: 0,
-								code: 'update_prediction_invalid_value',
-							},
-						),
+						{ pool, reason: 'predict-threw' },
 						ctx.publicCtx.slot,
 					),
 					ctx.publicCtx.slot,
@@ -437,32 +279,197 @@ const tryPredict = async (
 				return;
 			}
 
-			const updateValue = snapOutcomeToPool(updateDecision.value, pool);
-			try {
-				await logAction(
-					'predictions.update',
-					() =>
-						ctx.client.predictions.update({
-							predictionId,
-							value: updateValue,
-						}),
-					{ prediction_id: predictionId },
-				);
+			if (ctx.signal.aborted) {
+				decision = null;
+			}
+
+			if (decision === null) {
 				emit(
-					'pred_update',
-					lineForPredictionUpdated(
+					'skip',
+					lineForSkipped(
 						options,
 						{
 							pool,
-							predictionId,
-							previousValue: value,
-							value: updateValue,
-							stake,
+							reason: ctx.signal.aborted
+								? 'predict-aborted'
+								: 'predict-returned-null',
 						},
 						ctx.publicCtx.slot,
 					),
 					ctx.publicCtx.slot,
 				);
+				return;
+			}
+
+			if (!Number.isFinite(decision.value)) {
+				emit(
+					'skip',
+					lineForSkipped(
+						options,
+						{ pool, reason: 'invalid-value' },
+						ctx.publicCtx.slot,
+					),
+					ctx.publicCtx.slot,
+				);
+				return;
+			}
+
+			if (!Number.isFinite(decision.stake)) {
+				emit(
+					'skip',
+					lineForSkipped(
+						options,
+						{ pool, reason: 'invalid-stake' },
+						ctx.publicCtx.slot,
+					),
+					ctx.publicCtx.slot,
+				);
+				return;
+			}
+
+			if (Date.now() >= deadlineMs) {
+				emit(
+					'skip',
+					lineForSkipped(
+						options,
+						{ pool, reason: 'predict-too-late' },
+						ctx.publicCtx.slot,
+					),
+					ctx.publicCtx.slot,
+				);
+				return;
+			}
+
+			const value = snapOutcomeToPool(decision.value, pool);
+			const stake = Math.min(
+				Math.max(decision.stake, pool.min_stake),
+				pool.max_stake,
+			);
+
+			try {
+				await logAction(
+					'predictions.create',
+					() =>
+						ctx.client.predictions.create({ poolId: pool.id, stake, value }),
+					scopeMeta,
+				);
+				emit(
+					'pred',
+					lineForPredicted(options, { pool, value, stake }, ctx.publicCtx.slot),
+					ctx.publicCtx.slot,
+				);
+
+				if (!options.updatePrediction) {
+					return;
+				}
+
+				const predictionId = await logAction('resolvePredictionId', () =>
+					resolvePredictionIdForPool(
+						ctx.client,
+						ctx.publicCtx.me.id,
+						pool.id,
+						ctx.signal,
+					),
+				);
+
+				if (!predictionId) {
+					emit(
+						'error',
+						lineForError(
+							options,
+							new TrepaError(
+								'Could not resolve prediction id for updatePrediction ' +
+									'(active prediction for this pool not found after submit).',
+								{ status: 0, code: 'prediction_id_unresolved' },
+							),
+							ctx.publicCtx.slot,
+						),
+						ctx.publicCtx.slot,
+					);
+					return;
+				}
+
+				const submitted: BotSubmittedPredictionContext = {
+					pool,
+					value,
+					stake,
+					predictionId,
+				};
+
+				let updateDecision: BotUpdatePredictionDecision;
+				try {
+					updateDecision = await logAction('strategy.updatePrediction', () =>
+						raceWithAbort(
+							options.updatePrediction!(submitted, ctx.publicCtx),
+							ctx.signal,
+						),
+					);
+				} catch (err) {
+					emit(
+						'error',
+						lineForError(options, err, ctx.publicCtx.slot),
+						ctx.publicCtx.slot,
+					);
+					updateDecision = null;
+				}
+
+				if (ctx.signal.aborted) {
+					updateDecision = null;
+				}
+
+				if (updateDecision === null) {
+					return;
+				}
+
+				if (!Number.isFinite(updateDecision.value)) {
+					emit(
+						'error',
+						lineForError(
+							options,
+							new TrepaError('updatePrediction returned a non-finite value.', {
+								status: 0,
+								code: 'update_prediction_invalid_value',
+							}),
+							ctx.publicCtx.slot,
+						),
+						ctx.publicCtx.slot,
+					);
+					return;
+				}
+
+				const updateValue = snapOutcomeToPool(updateDecision.value, pool);
+				try {
+					await logAction(
+						'predictions.update',
+						() =>
+							ctx.client.predictions.update({
+								predictionId,
+								value: updateValue,
+							}),
+						{ prediction_id: predictionId },
+					);
+					emit(
+						'pred_update',
+						lineForPredictionUpdated(
+							options,
+							{
+								pool,
+								predictionId,
+								previousValue: value,
+								value: updateValue,
+								stake,
+							},
+							ctx.publicCtx.slot,
+						),
+						ctx.publicCtx.slot,
+					);
+				} catch (err) {
+					emit(
+						'error',
+						lineForError(options, err, ctx.publicCtx.slot),
+						ctx.publicCtx.slot,
+					);
+				}
 			} catch (err) {
 				emit(
 					'error',
@@ -470,14 +477,9 @@ const tryPredict = async (
 					ctx.publicCtx.slot,
 				);
 			}
-		} catch (err) {
-			emit(
-				'error',
-				lineForError(options, err, ctx.publicCtx.slot),
-				ctx.publicCtx.slot,
-			);
-		}
-	}, scopeMeta);
+		},
+		scopeMeta,
+	);
 };
 
 async function raceWithAbort<T>(

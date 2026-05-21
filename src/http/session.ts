@@ -2,10 +2,7 @@ import createClient, { type Client, type Middleware } from 'openapi-fetch';
 
 import type { paths } from '../api/schema';
 import { TrepaError, errorFromResponse } from '../core/errors';
-import {
-	getActiveTraceHeaders,
-	logHttpAction,
-} from '../logging/action-logger';
+import { getActiveTraceHeaders, logHttpAction } from '../logging/action-logger';
 
 export const DEFAULT_TREPA_API_BASE_URL = 'https://api.trepa.app';
 

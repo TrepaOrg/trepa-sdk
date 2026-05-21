@@ -1,9 +1,9 @@
+import type { Session } from './session';
 import {
 	isActionLoggingActive,
 	logAction,
 	runScope,
 } from '../logging/action-logger';
-import type { Session } from './session';
 
 const sign = async (
 	transaction: string,
