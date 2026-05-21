@@ -1,4 +1,5 @@
-import { type Address, address } from '@solana/addresses';
+import { type Address } from '@solana/addresses';
+import type { Signature } from '@solana/keys';
 import {
 	type Instruction,
 	type KeyPairSigner,
@@ -13,19 +14,21 @@ import {
 	setTransactionMessageLifetimeUsingBlockhash,
 	signTransactionMessageWithSigners,
 } from '@solana/kit';
-import { createSolanaRpc } from '@solana/rpc';
 import { createSolanaRpcSubscriptions } from '@solana/rpc-subscriptions';
 import { getTransferSolInstruction } from '@solana-program/system';
 import {
 	TOKEN_PROGRAM_ADDRESS,
-	fetchMaybeToken,
 	findAssociatedTokenPda,
 	getCreateAssociatedTokenIdempotentInstructionAsync,
 	getTransferCheckedInstruction,
 } from '@solana-program/token';
 
+import { fetchFunderBalancesBatch } from './balance-batch';
 import type { BalanceManagerConfig } from './balance-manager-config';
+import { sharedSolanaRpc } from './rpc-pool';
+import { resolveStakeTokenFromTrepa } from './stake-token-cache';
 import { startMasterWalletHudMirror } from './wallet-hud';
+import type { WalletHudWalletSeed } from './wallet-hud-batch';
 import type { BotCredentials } from '../bots/types';
 import { ensureTrepaEnvLoaded } from '../config/env-load';
 import { TrepaError } from '../core/errors';
@@ -36,9 +39,14 @@ import {
 	writeEvent,
 	writeSwarmMetaLine,
 } from '../logging/format';
-import { sendAndConfirmTransactionFactory } from './vendor/send-and-confirm-transaction';
+import {
+	sendAndConfirmTransactionFactory,
+	type SolanaTransactionKit,
+} from './vendor/send-and-confirm-transaction';
 
-type SendAndConfirmSigned = ReturnType<typeof sendAndConfirmTransactionFactory>;
+type LatestBlockhashLifetime = Parameters<
+	typeof setTransactionMessageLifetimeUsingBlockhash
+>[0];
 
 export type {
 	BalanceManagerConfig,
@@ -59,8 +67,8 @@ interface BotWallet {
 }
 
 interface FunderCtx {
-	rpc: ReturnType<typeof createSolanaRpc>;
-	sendAndConfirm: SendAndConfirmSigned;
+	rpc: ReturnType<typeof sharedSolanaRpc>;
+	txKit: SolanaTransactionKit;
 	master: KeyPairSigner<string>;
 	masterAta: Address;
 	mint: Address;
@@ -71,6 +79,7 @@ interface FunderCtx {
 	solThresholdLamports: bigint;
 	rentExemptLamports: bigint;
 	masterSolReserveLamports: bigint;
+	masterTokenWarned: boolean;
 }
 
 interface BotSyncSnapshot {
@@ -133,13 +142,21 @@ export async function runBalanceManagerSidecar(
 	credentials: readonly BotCredentials[],
 	signal: AbortSignal,
 	config?: BalanceManagerConfig,
+	masterHudSeed?: WalletHudWalletSeed,
 ): Promise<void> {
 	ensureTrepaEnvLoaded();
 	const masterPrivateKey = resolveMasterPrivateKey();
 	if (!masterPrivateKey) return;
 
 	const policy = resolvePolicy(config);
-	await runFunderLoop(trepa, credentials, masterPrivateKey, policy, signal);
+	await runFunderLoop(
+		trepa,
+		credentials,
+		masterPrivateKey,
+		policy,
+		signal,
+		masterHudSeed,
+	);
 }
 
 async function runFunderLoop(
@@ -148,6 +165,7 @@ async function runFunderLoop(
 	masterPrivateKey: string,
 	policy: ResolvedBalancePolicy,
 	signal: AbortSignal,
+	masterHudSeed?: WalletHudWalletSeed,
 ): Promise<void> {
 	let bootstrap: Awaited<ReturnType<typeof bootstrapFunder>>;
 	try {
@@ -177,6 +195,7 @@ async function runFunderLoop(
 			rpcUrl: trepa.solanaRpcUrl,
 			wsUrl: trepa.solanaRpcSubscriptionsUrl,
 			signal,
+			seed: masterHudSeed,
 		});
 	}
 	writeSwarmMetaLine(
@@ -238,19 +257,19 @@ async function bootstrapFunder(
 	let mint: Address;
 	let decimals: number;
 	try {
-		({ mint, decimals } = await fetchStakeMint(trepa));
+		({ mint, decimals } = await resolveStakeTokenFromTrepa(trepa));
 	} catch (err) {
 		throw bootstrapStepError('GET /pools to resolve stake mint', err);
 	}
 
-	const rpc = createSolanaRpc(trepa.solanaRpcUrl);
+	const rpc = sharedSolanaRpc(trepa.solanaRpcUrl);
 	const rpcSubscriptions = createSolanaRpcSubscriptions(
 		trepa.solanaRpcSubscriptionsUrl,
 	);
-	const sendAndConfirm = sendAndConfirmTransactionFactory({
+	const txKit = sendAndConfirmTransactionFactory({
 		rpc,
 		rpcSubscriptions,
-	});
+	} as Parameters<typeof sendAndConfirmTransactionFactory>[0]);
 
 	const targetUnits = toBaseUnits(policy.usdcTarget, decimals);
 	let thresholdUnits = toBaseUnits(policy.usdcThreshold, decimals);
@@ -290,15 +309,6 @@ async function bootstrapFunder(
 		tokenProgram: TOKEN_PROGRAM_ADDRESS,
 	});
 
-	const masterToken = await fetchMaybeToken(rpc, masterAta);
-	if (!masterToken.exists) {
-		trepaLog.warn(
-			`master has no USDC token account for mint ${shortAddr(mint)} on ` +
-				`${trepa.solanaRpcUrl} — fund the master wallet on this cluster or ` +
-				`set TrepaConfig.solanaRpcUrl to match where the mint lives.`,
-		);
-	}
-
 	const bots: BotWallet[] = botSigners.map((s, i) => ({
 		address: s.address,
 		label:
@@ -318,7 +328,7 @@ async function bootstrapFunder(
 	return {
 		ctx: {
 			rpc,
-			sendAndConfirm,
+			txKit,
 			master,
 			masterAta,
 			mint,
@@ -329,45 +339,22 @@ async function bootstrapFunder(
 			solThresholdLamports,
 			rentExemptLamports,
 			masterSolReserveLamports,
+			masterTokenWarned: false,
 		},
 		bots,
 	};
 }
 
-async function fetchStakeMint(
-	trepa: Trepa,
-): Promise<{ mint: Address; decimals: number }> {
-	const firstPool = (await trepa.pools.list({ limit: 1 }))[0];
-	if (!firstPool) {
-		throw new Error(
-			'no pools listed — cannot resolve stake mint. Omit master funding ' +
-				'(no TREPA_MASTER_PRIVATE_KEY) ' +
-				'or wait until a pool exists.',
-		);
-	}
-	return {
-		mint: address(firstPool.stake_token_mint),
-		decimals: firstPool.decimals,
-	};
-}
-
-async function loadBotSyncSnapshot(
+function snapshotFromBalances(
 	ctx: FunderCtx,
 	bot: BotWallet,
-): Promise<BotSyncSnapshot | null> {
-	const [botAta] = await findAssociatedTokenPda({
-		mint: ctx.mint,
-		owner: bot.address,
-		tokenProgram: TOKEN_PROGRAM_ADDRESS,
-	});
-
-	const [tokenAccount, botBalanceResponse] = await Promise.all([
-		fetchMaybeToken(ctx.rpc, botAta),
-		ctx.rpc.getBalance(bot.address).send(),
-	]);
-	const currentUsdc = tokenAccount.exists ? tokenAccount.data.amount : 0n;
-	const needsAta = !tokenAccount.exists;
-	const botLamports = BigInt(botBalanceResponse.value);
+	botAta: Address,
+	solLamports: bigint,
+	tokenAmount: bigint,
+	tokenAccountExists: boolean,
+): BotSyncSnapshot | null {
+	const currentUsdc = tokenAccountExists ? tokenAmount : 0n;
+	const needsAta = !tokenAccountExists;
 	const solFloorLamports =
 		ctx.solTargetLamports > ctx.rentExemptLamports
 			? ctx.solTargetLamports
@@ -381,10 +368,10 @@ async function loadBotSyncSnapshot(
 	}
 
 	let solDelta = 0n;
-	if (botLamports < ctx.solThresholdLamports) {
-		solDelta = solFloorLamports - botLamports;
-	} else if (botLamports > solFloorLamports) {
-		solDelta = solFloorLamports - botLamports;
+	if (solLamports < ctx.solThresholdLamports) {
+		solDelta = solFloorLamports - solLamports;
+	} else if (solLamports > solFloorLamports) {
+		solDelta = solFloorLamports - solLamports;
 	}
 
 	if (usdcDelta === 0n && solDelta === 0n) return null;
@@ -482,17 +469,43 @@ async function syncAllBotsBundled(
 	bots: readonly BotWallet[],
 	maxBotsPerTransaction: number,
 ): Promise<void> {
-	const snapshots = (
-		await Promise.all(bots.map((b) => loadBotSyncSnapshot(ctx, b)))
-	).filter((s): s is BotSyncSnapshot => s !== null);
+	const botByAddress = new Map(bots.map((b) => [b.address, b]));
+	const batch = await fetchFunderBalancesBatch({
+		rpc: ctx.rpc,
+		mint: ctx.mint,
+		masterAddress: ctx.master.address,
+		masterAta: ctx.masterAta,
+		botAddresses: bots.map((b) => b.address),
+	});
+
+	if (!ctx.masterTokenWarned && !batch.masterTokenAccountExists) {
+		ctx.masterTokenWarned = true;
+		trepaLog.warn(
+			`master has no USDC token account for mint ${shortAddr(ctx.mint)} — ` +
+				'fund the master wallet on this cluster or set solanaRpcUrl to match ' +
+				'where the mint lives.',
+		);
+	}
+
+	const snapshots: BotSyncSnapshot[] = [];
+	for (const row of batch.bots) {
+		const bot = botByAddress.get(row.botAddress);
+		if (!bot) continue;
+		const snap = snapshotFromBalances(
+			ctx,
+			bot,
+			row.botAta,
+			row.solLamports,
+			row.tokenAmount,
+			row.tokenAccountExists,
+		);
+		if (snap !== null) snapshots.push(snap);
+	}
 
 	if (snapshots.length === 0) return;
 
-	const { value: masterLamports } = await ctx.rpc
-		.getBalance(ctx.master.address)
-		.send();
 	const masterSolSpendBudget = {
-		value: BigInt(masterLamports) - ctx.masterSolReserveLamports,
+		value: batch.masterLamports - ctx.masterSolReserveLamports,
 	};
 
 	const plans: BotSyncPlan[] = [];
@@ -503,11 +516,26 @@ async function syncAllBotsBundled(
 	const plansWithWork = plans.filter((p) => p.instructions.length > 0);
 	if (plansWithWork.length === 0) return;
 
+	const { value: latestBlockhash } = await ctx.rpc.getLatestBlockhash().send();
+	const signatures: Signature[] = [];
 	for (let i = 0; i < plansWithWork.length; i += maxBotsPerTransaction) {
 		const chunk = plansWithWork.slice(i, i + maxBotsPerTransaction);
-		await sendAndConfirmInstructions(ctx, flattenPlanInstructions(chunk));
+		const signed = await signFundingTransaction(
+			ctx,
+			flattenPlanInstructions(chunk),
+			latestBlockhash,
+		);
+		const signature = await ctx.txKit.sendTransaction(signed, {
+			commitment: 'confirmed',
+			skipPreflight: true,
+		});
+		signatures.push(signature);
 		logPlanBatchOutcomes(chunk);
 	}
+	await ctx.txKit.confirmSignatures(signatures, {
+		commitment: 'confirmed',
+		lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+	});
 }
 
 function flattenPlanInstructions(plans: readonly BotSyncPlan[]): Instruction[] {
@@ -525,11 +553,11 @@ function logPlanBatchOutcomes(plans: readonly BotSyncPlan[]): void {
 	}
 }
 
-async function sendAndConfirmInstructions(
+async function signFundingTransaction(
 	ctx: FunderCtx,
 	instructions: readonly Instruction[],
-): Promise<void> {
-	const { value: latestBlockhash } = await ctx.rpc.getLatestBlockhash().send();
+	latestBlockhash: LatestBlockhashLifetime,
+) {
 	const message = pipe(
 		createTransactionMessage({ version: 0 }),
 		(tx) => setTransactionMessageFeePayerSigner(ctx.master, tx),
@@ -539,7 +567,7 @@ async function sendAndConfirmInstructions(
 	const signed = await signTransactionMessageWithSigners(message);
 	assertIsTransactionWithinSizeLimit(signed);
 	assertIsTransactionWithBlockhashLifetime(signed);
-	await ctx.sendAndConfirm(signed, { commitment: 'confirmed' });
+	return signed;
 }
 
 async function createSignerFromBase58(

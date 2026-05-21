@@ -25,7 +25,11 @@ import type {
 import { TrepaError } from '../core/errors';
 import { TrepaClient } from '../http/client';
 import { trepaStdoutIsInteractive } from '../logging/format';
-import { startBotWalletHudMirror } from '../solana/wallet-hud';
+import type { StakeTokenInfo } from '../solana/stake-token-cache';
+import {
+	startBotWalletHudMirror,
+	type WalletHudWalletSeed,
+} from '../solana/wallet-hud';
 
 type BotState =
 	| { kind: 'polling' }
@@ -54,7 +58,12 @@ export async function runPredictorLoop(
 	client: TrepaClient,
 	options: BotOptions,
 	signal: AbortSignal,
-	walletHud: { rpcUrl: string; wsUrl: string },
+	walletHud: {
+		rpcUrl: string;
+		wsUrl: string;
+		stakeToken?: StakeTokenInfo;
+		seed?: WalletHudWalletSeed;
+	},
 ): Promise<void> {
 	if (signal.aborted) return;
 	const authStarted = Date.now();
@@ -69,6 +78,8 @@ export async function runPredictorLoop(
 			rpcUrl: walletHud.rpcUrl,
 			wsUrl: walletHud.wsUrl,
 			signal,
+			stakeToken: walletHud.stakeToken,
+			seed: walletHud.seed,
 		});
 	}
 	const streakId = (await client.streaks.bitcoin()).id;

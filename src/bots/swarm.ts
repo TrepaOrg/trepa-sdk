@@ -31,6 +31,14 @@ import {
 	hasMasterFundingKey,
 	runBalanceManagerSidecar,
 } from '../solana/balance-manager';
+import {
+	resolveStakeTokenFromTrepa,
+	type StakeTokenInfo,
+} from '../solana/stake-token-cache';
+import {
+	prepareWalletHudBatch,
+	type WalletHudBatchSnapshot,
+} from '../solana/wallet-hud-batch';
 
 const staggerFirstRequest = (
 	ms: number,
@@ -180,6 +188,33 @@ export class Bots {
 				);
 			}
 		}
+		let swarmStakeToken: StakeTokenInfo | undefined;
+		if (
+			this.trepaForBalanceManager !== undefined &&
+			(trepaStdoutIsInteractive() || hasMasterFundingKey())
+		) {
+			try {
+				swarmStakeToken = await resolveStakeTokenFromTrepa(
+					this.trepaForBalanceManager,
+				);
+			} catch {
+				swarmStakeToken = undefined;
+			}
+		}
+
+		let walletHudBatch: WalletHudBatchSnapshot | undefined;
+		if (trepaStdoutIsInteractive() && swarmStakeToken) {
+			try {
+				walletHudBatch = await prepareWalletHudBatch({
+					rpcUrl: this.walletHudRpcUrl,
+					stakeToken: swarmStakeToken,
+					botPrivateKeys: this.credentials.map((c) => c.privateKey),
+				});
+			} catch {
+				walletHudBatch = undefined;
+			}
+		}
+
 		const balanceManagerTask =
 			this.trepaForBalanceManager !== undefined && hasMasterFundingKey()
 				? runBalanceManagerSidecar(
@@ -187,8 +222,11 @@ export class Bots {
 						this.credentials,
 						balanceManagerAc.signal,
 						mergedBalanceManager,
+						walletHudBatch?.master,
 					)
 				: Promise.resolve();
+
+		const walletHudStakeToken = swarmStakeToken;
 
 		try {
 			await Promise.all([
@@ -215,6 +253,8 @@ export class Bots {
 						await runPredictorLoop(slot, client, opts, signal, {
 							rpcUrl: this.walletHudRpcUrl,
 							wsUrl: this.walletHudWsUrl,
+							stakeToken: walletHudStakeToken,
+							seed: walletHudBatch?.slots[index],
 						});
 					} finally {
 						if (!swarmAc.signal.aborted) {

@@ -6,12 +6,16 @@ import type {
 	AccountInfoWithJsonData,
 } from '@solana/rpc-types';
 import {
-	fetchMaybeToken,
 	findAssociatedTokenPda,
 	TOKEN_PROGRAM_ADDRESS,
 } from '@solana-program/token';
 
 import { sharedSolanaRpc, sharedSolanaRpcSubscriptions } from './rpc-pool';
+import {
+	resolveStakeTokenFromClient,
+	type StakeTokenInfo,
+} from './stake-token-cache';
+import type { WalletHudWalletSeed } from './wallet-hud-batch';
 import type { components } from '../api/schema';
 import type { TrepaClient } from '../http/client';
 import { formatNumber } from '../logging/format';
@@ -22,9 +26,21 @@ import {
 } from '../logging/log-ink';
 import { createAsyncGeneratorWithInitialValueAndSlotTracking } from './vendor/create-async-generator-with-initial-value-and-slot-tracking';
 
+export type { WalletHudWalletSeed } from './wallet-hud-batch';
+
 type UserDto = components['schemas']['UserDto'];
 
 type JsonParsedSplAccount = Readonly<AccountInfoBase & AccountInfoWithJsonData>;
+
+export interface WalletHudRpcOpts {
+	rpcUrl: string;
+	wsUrl: string;
+	signal: AbortSignal;
+	/** When set (e.g. from swarm), skips per-bot `pools.list`. */
+	stakeToken?: StakeTokenInfo;
+	/** Batched startup snapshot; skips initial HTTP for this wallet. */
+	seed?: WalletHudWalletSeed;
+}
 
 function formatSolLamports(lamports: Lamports): string {
 	const n = Number(lamports) / 1e9;
@@ -61,214 +77,252 @@ function stakeUiFromJsonParsedAccountInfo(
 	return tokenAmountToUiString(parsed.info.tokenAmount);
 }
 
-function formatStakeBaseUnits(amount: bigint, decimals: number): string {
-	const n = Number(amount) / 10 ** decimals;
-	return formatNumber(n, Math.min(decimals, 6));
+async function resolveHudStakeToken(
+	client: TrepaClient | undefined,
+	stakeToken: StakeTokenInfo | undefined,
+): Promise<StakeTokenInfo | undefined> {
+	if (stakeToken) {
+		return stakeToken;
+	}
+	if (!client) {
+		return undefined;
+	}
+	try {
+		return await resolveStakeTokenFromClient(client);
+	} catch {
+		return undefined;
+	}
 }
 
-export function startBotWalletHudMirror(opts: {
-	client: TrepaClient;
-	me: UserDto;
-	slotIndex: number;
+function startSolHudWsOnly(opts: {
+	abortSignal: AbortSignal;
+	wsUrl: string;
+	wallet: Address;
+	onUpdate: (sol: string) => void;
+}): void {
+	const subs = sharedSolanaRpcSubscriptions(opts.wsUrl);
+	void (async () => {
+		try {
+			const notifications = await subs
+				.accountNotifications(opts.wallet, { commitment: 'confirmed' })
+				.subscribe({ abortSignal: opts.abortSignal });
+			for await (const { value: account } of notifications) {
+				opts.onUpdate(formatSolLamports(account.lamports));
+			}
+		} catch {}
+	})();
+}
+
+function startStakeHudWsOnly(opts: {
+	abortSignal: AbortSignal;
+	wsUrl: string;
+	ata: Address;
+	onUpdate: (usdc: string) => void;
+}): void {
+	const subs = sharedSolanaRpcSubscriptions(opts.wsUrl);
+	void (async () => {
+		try {
+			const notifications = await subs
+				.accountNotifications(opts.ata, {
+					encoding: 'jsonParsed',
+					commitment: 'confirmed',
+				})
+				.subscribe({ abortSignal: opts.abortSignal });
+			for await (const { value: info } of notifications) {
+				opts.onUpdate(`${stakeUiFromJsonParsedAccountInfo(info)} USDC`);
+			}
+		} catch {}
+	})();
+}
+
+function startSolHudPipe(opts: {
+	abortSignal: AbortSignal;
 	rpcUrl: string;
 	wsUrl: string;
-	signal: AbortSignal;
+	wallet: Address;
+	seed?: WalletHudWalletSeed;
+	onUpdate: (sol: string) => void;
 }): void {
+	if (opts.seed) {
+		opts.onUpdate(formatSolLamports(opts.seed.solLamports as Lamports));
+		startSolHudWsOnly({
+			abortSignal: opts.abortSignal,
+			wsUrl: opts.wsUrl,
+			wallet: opts.wallet,
+			onUpdate: opts.onUpdate,
+		});
+		return;
+	}
+
+	const rpc = sharedSolanaRpc(opts.rpcUrl);
+	const subs = sharedSolanaRpcSubscriptions(opts.wsUrl);
+	const solPipe = createAsyncGeneratorWithInitialValueAndSlotTracking<
+		Lamports,
+		{ lamports: Lamports },
+		Lamports
+	>({
+		abortSignal: opts.abortSignal,
+		rpcRequest: rpc.getBalance(opts.wallet, { commitment: 'confirmed' }),
+		rpcValueMapper: (v: Lamports) => v,
+		rpcSubscriptionRequest: subs.accountNotifications(opts.wallet, {
+			commitment: 'confirmed',
+		}),
+		rpcSubscriptionValueMapper: (a: { lamports: Lamports }) => a.lamports,
+	});
+	void (async () => {
+		try {
+			for await (const st of solPipe) {
+				opts.onUpdate(formatSolLamports(st.value));
+			}
+		} catch {}
+	})();
+}
+
+function startStakeHudPipe(opts: {
+	abortSignal: AbortSignal;
+	rpcUrl: string;
+	wsUrl: string;
+	ata: Address;
+	seed?: WalletHudWalletSeed;
+	onUpdate: (usdc: string) => void;
+}): void {
+	if (opts.seed) {
+		opts.onUpdate(`${opts.seed.stakeUi} USDC`);
+		startStakeHudWsOnly({
+			abortSignal: opts.abortSignal,
+			wsUrl: opts.wsUrl,
+			ata: opts.ata,
+			onUpdate: opts.onUpdate,
+		});
+		return;
+	}
+
+	const rpc = sharedSolanaRpc(opts.rpcUrl);
+	const subs = sharedSolanaRpcSubscriptions(opts.wsUrl);
+	const usdcPipe = createAsyncGeneratorWithInitialValueAndSlotTracking<
+		JsonParsedSplAccount | null,
+		JsonParsedSplAccount | null,
+		string
+	>({
+		abortSignal: opts.abortSignal,
+		rpcRequest: rpc.getAccountInfo(opts.ata, {
+			encoding: 'jsonParsed',
+			commitment: 'confirmed',
+		}),
+		rpcValueMapper: (info: JsonParsedSplAccount | null) =>
+			stakeUiFromJsonParsedAccountInfo(info),
+		rpcSubscriptionRequest: subs.accountNotifications(opts.ata, {
+			encoding: 'jsonParsed',
+			commitment: 'confirmed',
+		}),
+		rpcSubscriptionValueMapper: (info: JsonParsedSplAccount | null) =>
+			stakeUiFromJsonParsedAccountInfo(info),
+	});
+	void (async () => {
+		try {
+			for await (const st of usdcPipe) {
+				opts.onUpdate(`${st.value} USDC`);
+			}
+		} catch {}
+	})();
+}
+
+export function startBotWalletHudMirror(
+	opts: WalletHudRpcOpts & {
+		client?: TrepaClient;
+		me: UserDto;
+		slotIndex: number;
+	},
+): void {
 	void runBotWalletHudMirror(opts).catch(() => undefined);
 }
 
-async function runBotWalletHudMirror(opts: {
-	client: TrepaClient;
-	me: UserDto;
-	slotIndex: number;
-	rpcUrl: string;
-	wsUrl: string;
-	signal: AbortSignal;
-}): Promise<void> {
+async function runBotWalletHudMirror(
+	opts: WalletHudRpcOpts & {
+		client?: TrepaClient;
+		me: UserDto;
+		slotIndex: number;
+	},
+): Promise<void> {
 	patchSlotWalletHud(opts.slotIndex, {
 		username: (opts.me.username ?? '').trim(),
 	});
 
 	const wallet = address(opts.me.wallet_address);
-	const rpc = sharedSolanaRpc(opts.rpcUrl);
-	const subs = sharedSolanaRpcSubscriptions(opts.wsUrl);
+	const stake = await resolveHudStakeToken(opts.client, opts.stakeToken);
 
-	let stakeMint: string | undefined;
-	let stakeDecimals = 6;
-	try {
-		const pools = await opts.client.pools.list({ limit: 1 });
-		const p0 = pools[0];
-		stakeMint = p0?.stake_token_mint;
-		if (typeof p0?.decimals === 'number') stakeDecimals = p0.decimals;
-	} catch {}
-
-	const solPipe = createAsyncGeneratorWithInitialValueAndSlotTracking<
-		Lamports,
-		{ lamports: Lamports },
-		Lamports
-	>({
+	startSolHudPipe({
 		abortSignal: opts.signal,
-		rpcRequest: rpc.getBalance(wallet, { commitment: 'confirmed' }),
-		rpcValueMapper: (v: Lamports) => v,
-		rpcSubscriptionRequest: subs.accountNotifications(wallet, {
-			commitment: 'confirmed',
-		}),
-		rpcSubscriptionValueMapper: (a: { lamports: Lamports }) => a.lamports,
+		rpcUrl: opts.rpcUrl,
+		wsUrl: opts.wsUrl,
+		wallet,
+		seed: opts.seed,
+		onUpdate: (sol) => {
+			patchSlotWalletHud(opts.slotIndex, { sol });
+		},
 	});
-	void (async () => {
-		try {
-			for await (const st of solPipe) {
-				patchSlotWalletHud(opts.slotIndex, {
-					sol: formatSolLamports(st.value),
-				});
-			}
-		} catch {}
-	})();
 
-	if (!stakeMint) {
+	if (!stake) {
 		patchSlotWalletHud(opts.slotIndex, { usdc: '—' });
 		return;
 	}
 
-	const mintAddr = address(stakeMint);
 	const [ata] = await findAssociatedTokenPda({
-		mint: mintAddr,
+		mint: stake.mint,
 		owner: wallet,
 		tokenProgram: TOKEN_PROGRAM_ADDRESS,
 	});
 
-	try {
-		const token = await fetchMaybeToken(rpc, ata, {
-			commitment: 'confirmed',
-		});
-		const ui = token.exists
-			? formatStakeBaseUnits(token.data.amount, stakeDecimals)
-			: '0';
-		patchSlotWalletHud(opts.slotIndex, { usdc: `${ui} USDC` });
-	} catch {}
-
-	const usdcPipe = createAsyncGeneratorWithInitialValueAndSlotTracking<
-		JsonParsedSplAccount | null,
-		JsonParsedSplAccount | null,
-		string
-	>({
+	startStakeHudPipe({
 		abortSignal: opts.signal,
-		rpcRequest: rpc.getAccountInfo(ata, {
-			encoding: 'jsonParsed',
-			commitment: 'confirmed',
-		}),
-		rpcValueMapper: (info: JsonParsedSplAccount | null) =>
-			stakeUiFromJsonParsedAccountInfo(info),
-		rpcSubscriptionRequest: subs.accountNotifications(ata, {
-			encoding: 'jsonParsed',
-			commitment: 'confirmed',
-		}),
-		rpcSubscriptionValueMapper: (info: JsonParsedSplAccount | null) =>
-			stakeUiFromJsonParsedAccountInfo(info),
-	});
-	void (async () => {
-		try {
-			for await (const st of usdcPipe) {
-				patchSlotWalletHud(opts.slotIndex, {
-					usdc: `${st.value} USDC`,
-				});
-			}
-		} catch {}
-	})();
-}
-
-export function startMasterWalletHudMirror(opts: {
-	shortAddr: string;
-	wallet: Address;
-	stakeDecimals: number;
-	masterAta: Address;
-	rpcUrl: string;
-	wsUrl: string;
-	signal: AbortSignal;
-}): void {
-	initMasterWalletHud(opts.shortAddr);
-	void runMasterWalletHudMirror({
-		wallet: opts.wallet,
-		stakeDecimals: opts.stakeDecimals,
-		masterAta: opts.masterAta,
 		rpcUrl: opts.rpcUrl,
 		wsUrl: opts.wsUrl,
-		signal: opts.signal,
-	}).catch(() => undefined);
+		ata,
+		seed: opts.seed,
+		onUpdate: (usdc) => {
+			patchSlotWalletHud(opts.slotIndex, { usdc });
+		},
+	});
 }
 
-async function runMasterWalletHudMirror(opts: {
-	wallet: Address;
-	stakeDecimals: number;
-	masterAta: Address;
-	rpcUrl: string;
-	wsUrl: string;
-	signal: AbortSignal;
-}): Promise<void> {
-	const rpc = sharedSolanaRpc(opts.rpcUrl);
-	const subs = sharedSolanaRpcSubscriptions(opts.wsUrl);
-	const wallet = opts.wallet;
-	const ata = opts.masterAta;
+export function startMasterWalletHudMirror(
+	opts: WalletHudRpcOpts & {
+		shortAddr: string;
+		wallet: Address;
+		stakeDecimals: number;
+		masterAta: Address;
+	},
+): void {
+	initMasterWalletHud(opts.shortAddr);
+	void runMasterWalletHudMirror(opts).catch(() => undefined);
+}
 
-	const solPipe = createAsyncGeneratorWithInitialValueAndSlotTracking<
-		Lamports,
-		{ lamports: Lamports },
-		Lamports
-	>({
+async function runMasterWalletHudMirror(
+	opts: WalletHudRpcOpts & {
+		wallet: Address;
+		stakeDecimals: number;
+		masterAta: Address;
+	},
+): Promise<void> {
+	startSolHudPipe({
 		abortSignal: opts.signal,
-		rpcRequest: rpc.getBalance(wallet, { commitment: 'confirmed' }),
-		rpcValueMapper: (v: Lamports) => v,
-		rpcSubscriptionRequest: subs.accountNotifications(wallet, {
-			commitment: 'confirmed',
-		}),
-		rpcSubscriptionValueMapper: (a: { lamports: Lamports }) => a.lamports,
+		rpcUrl: opts.rpcUrl,
+		wsUrl: opts.wsUrl,
+		wallet: opts.wallet,
+		seed: opts.seed,
+		onUpdate: (sol) => {
+			patchMasterWalletHud({ sol });
+		},
 	});
-	void (async () => {
-		try {
-			for await (const st of solPipe) {
-				patchMasterWalletHud({
-					sol: formatSolLamports(st.value),
-				});
-			}
-		} catch {}
-	})();
 
-	try {
-		const token = await fetchMaybeToken(rpc, ata, {
-			commitment: 'confirmed',
-		});
-		const ui = token.exists
-			? formatStakeBaseUnits(token.data.amount, opts.stakeDecimals)
-			: '0';
-		patchMasterWalletHud({ usdc: `${ui} USDC` });
-	} catch {}
-
-	const usdcPipe = createAsyncGeneratorWithInitialValueAndSlotTracking<
-		JsonParsedSplAccount | null,
-		JsonParsedSplAccount | null,
-		string
-	>({
+	startStakeHudPipe({
 		abortSignal: opts.signal,
-		rpcRequest: rpc.getAccountInfo(ata, {
-			encoding: 'jsonParsed',
-			commitment: 'confirmed',
-		}),
-		rpcValueMapper: (info: JsonParsedSplAccount | null) =>
-			stakeUiFromJsonParsedAccountInfo(info),
-		rpcSubscriptionRequest: subs.accountNotifications(ata, {
-			encoding: 'jsonParsed',
-			commitment: 'confirmed',
-		}),
-		rpcSubscriptionValueMapper: (info: JsonParsedSplAccount | null) =>
-			stakeUiFromJsonParsedAccountInfo(info),
+		rpcUrl: opts.rpcUrl,
+		wsUrl: opts.wsUrl,
+		ata: opts.masterAta,
+		seed: opts.seed,
+		onUpdate: (usdc) => {
+			patchMasterWalletHud({ usdc });
+		},
 	});
-	void (async () => {
-		try {
-			for await (const st of usdcPipe) {
-				patchMasterWalletHud({
-					usdc: `${st.value} USDC`,
-				});
-			}
-		} catch {}
-	})();
 }
