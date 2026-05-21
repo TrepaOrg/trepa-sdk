@@ -22,6 +22,7 @@ import type {
 	BotUpdatePredictionDecision,
 	OpenPool,
 } from './types';
+import { logAction, runScope } from '../logging/action-logger';
 import { TrepaError } from '../core/errors';
 import { TrepaClient } from '../http/client';
 import { trepaStdoutIsInteractive } from '../logging/format';
@@ -56,46 +57,54 @@ export async function runPredictorLoop(
 	signal: AbortSignal,
 	walletHud: { rpcUrl: string; wsUrl: string },
 ): Promise<void> {
-	if (signal.aborted) return;
-	const authStarted = Date.now();
-	const me = await client.auth.me();
-	if (signal.aborted) return;
-	if (trepaStdoutIsInteractive()) {
-		startBotWalletHudMirror({
-			client,
-			me,
-			slotIndex: slot.index,
-			rpcUrl: walletHud.rpcUrl,
-			wsUrl: walletHud.wsUrl,
-			signal,
-		});
-	}
-	const streakId = (await client.streaks.bitcoin()).id;
-	const authMs = Date.now() - authStarted;
-	const publicCtx: BotContext = { slot, me, trepa: client, signal };
-	emit('ready', lineForReady(options, publicCtx, slot, authMs), slot);
+	await runScope(
+		'bot.slot',
+		async () => {
+			if (signal.aborted) return;
+			const authStarted = Date.now();
+			const me = await logAction('auth.me', () => client.auth.me());
+			const authMs = Date.now() - authStarted;
+			if (signal.aborted) return;
+			if (trepaStdoutIsInteractive()) {
+				startBotWalletHudMirror({
+					client,
+					me,
+					slotIndex: slot.index,
+					rpcUrl: walletHud.rpcUrl,
+					wsUrl: walletHud.wsUrl,
+					signal,
+				});
+			}
+			const streakId = await logAction('streaks.bitcoin', () =>
+				client.streaks.bitcoin().then((s) => s.id),
+			);
+			const publicCtx: BotContext = { slot, me, trepa: client, signal };
+			emit('ready', lineForReady(options, publicCtx, slot, authMs), slot);
 
-	const ctx: MachineCtx = {
-		client,
-		options,
-		signal,
-		publicCtx,
-		streakId,
-		pollIntervalMs: options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS,
-		postResolveBufferMs:
-			options.postResolveBufferMs ?? DEFAULT_POST_RESOLVE_BUFFER_MS,
-		seenPoolId: null,
-		isColdStart: true,
-	};
+			const ctx: MachineCtx = {
+				client,
+				options,
+				signal,
+				publicCtx,
+				streakId,
+				pollIntervalMs: options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS,
+				postResolveBufferMs:
+					options.postResolveBufferMs ?? DEFAULT_POST_RESOLVE_BUFFER_MS,
+				seenPoolId: null,
+				isColdStart: true,
+			};
 
-	let state: BotState = { kind: 'polling' };
-	while (state.kind !== 'stopped') {
-		if (signal.aborted) {
-			state = { kind: 'stopped' };
-			break;
-		}
-		state = await advance(state, ctx);
-	}
+			let state: BotState = { kind: 'polling' };
+			while (state.kind !== 'stopped') {
+				if (signal.aborted) {
+					state = { kind: 'stopped' };
+					break;
+				}
+				state = await logAction('loop.advance', () => advance(state, ctx));
+			}
+		},
+		{ slot: slot.index, count: slot.count },
+	);
 }
 
 const advance = async (state: BotState, ctx: MachineCtx): Promise<BotState> => {
@@ -238,112 +247,128 @@ const tryPredict = async (
 	deadlineMs: number,
 ): Promise<void> => {
 	const { options } = ctx;
-	let decision: BotPredictDecision;
+	const scopeMeta = {
+		pool_id: pool.id,
+		slot: ctx.publicCtx.slot.index,
+	};
 
-	try {
-		decision = await raceWithAbort(
-			options.predict(pool, ctx.publicCtx),
-			ctx.signal,
-		);
-	} catch (err) {
-		emit(
-			'error',
-			lineForError(options, err, ctx.publicCtx.slot),
-			ctx.publicCtx.slot,
-		);
-		emit(
-			'skip',
-			lineForSkipped(
-				options,
-				{ pool, reason: 'predict-threw' },
-				ctx.publicCtx.slot,
-			),
-			ctx.publicCtx.slot,
-		);
-		return;
-	}
+	await runScope('bot.tryPredict', async () => {
+		let decision: BotPredictDecision;
 
-	if (ctx.signal.aborted) {
-		decision = null;
-	}
-
-	if (decision === null) {
-		emit(
-			'skip',
-			lineForSkipped(
-				options,
-				{
-					pool,
-					reason: ctx.signal.aborted
-						? 'predict-aborted'
-						: 'predict-returned-null',
-				},
-				ctx.publicCtx.slot,
-			),
-			ctx.publicCtx.slot,
-		);
-		return;
-	}
-
-	if (!Number.isFinite(decision.value)) {
-		emit(
-			'skip',
-			lineForSkipped(
-				options,
-				{ pool, reason: 'invalid-value' },
-				ctx.publicCtx.slot,
-			),
-			ctx.publicCtx.slot,
-		);
-		return;
-	}
-
-	if (!Number.isFinite(decision.stake)) {
-		emit(
-			'skip',
-			lineForSkipped(
-				options,
-				{ pool, reason: 'invalid-stake' },
-				ctx.publicCtx.slot,
-			),
-			ctx.publicCtx.slot,
-		);
-		return;
-	}
-
-	if (Date.now() >= deadlineMs) {
-		emit(
-			'skip',
-			lineForSkipped(
-				options,
-				{ pool, reason: 'predict-too-late' },
-				ctx.publicCtx.slot,
-			),
-			ctx.publicCtx.slot,
-		);
-		return;
-	}
-
-	const value = snapOutcomeToPool(decision.value, pool);
-	const stake = Math.min(
-		Math.max(decision.stake, pool.min_stake),
-		pool.max_stake,
-	);
-
-	try {
-		await ctx.client.predictions.create({ poolId: pool.id, stake, value });
-		emit(
-			'pred',
-			lineForPredicted(options, { pool, value, stake }, ctx.publicCtx.slot),
-			ctx.publicCtx.slot,
-		);
-		if (options.updatePrediction) {
-			const predictionId = await resolvePredictionIdForPool(
-				ctx.client,
-				ctx.publicCtx.me.id,
-				pool.id,
-				ctx.signal,
+		try {
+			decision = await logAction('strategy.predict', () =>
+				raceWithAbort(options.predict(pool, ctx.publicCtx), ctx.signal),
 			);
+		} catch (err) {
+			emit(
+				'error',
+				lineForError(options, err, ctx.publicCtx.slot),
+				ctx.publicCtx.slot,
+			);
+			emit(
+				'skip',
+				lineForSkipped(
+					options,
+					{ pool, reason: 'predict-threw' },
+					ctx.publicCtx.slot,
+				),
+				ctx.publicCtx.slot,
+			);
+			return;
+		}
+
+		if (ctx.signal.aborted) {
+			decision = null;
+		}
+
+		if (decision === null) {
+			emit(
+				'skip',
+				lineForSkipped(
+					options,
+					{
+						pool,
+						reason: ctx.signal.aborted
+							? 'predict-aborted'
+							: 'predict-returned-null',
+					},
+					ctx.publicCtx.slot,
+				),
+				ctx.publicCtx.slot,
+			);
+			return;
+		}
+
+		if (!Number.isFinite(decision.value)) {
+			emit(
+				'skip',
+				lineForSkipped(
+					options,
+					{ pool, reason: 'invalid-value' },
+					ctx.publicCtx.slot,
+				),
+				ctx.publicCtx.slot,
+			);
+			return;
+		}
+
+		if (!Number.isFinite(decision.stake)) {
+			emit(
+				'skip',
+				lineForSkipped(
+					options,
+					{ pool, reason: 'invalid-stake' },
+					ctx.publicCtx.slot,
+				),
+				ctx.publicCtx.slot,
+			);
+			return;
+		}
+
+		if (Date.now() >= deadlineMs) {
+			emit(
+				'skip',
+				lineForSkipped(
+					options,
+					{ pool, reason: 'predict-too-late' },
+					ctx.publicCtx.slot,
+				),
+				ctx.publicCtx.slot,
+			);
+			return;
+		}
+
+		const value = snapOutcomeToPool(decision.value, pool);
+		const stake = Math.min(
+			Math.max(decision.stake, pool.min_stake),
+			pool.max_stake,
+		);
+
+		try {
+			await logAction(
+				'predictions.create',
+				() => ctx.client.predictions.create({ poolId: pool.id, stake, value }),
+				scopeMeta,
+			);
+			emit(
+				'pred',
+				lineForPredicted(options, { pool, value, stake }, ctx.publicCtx.slot),
+				ctx.publicCtx.slot,
+			);
+
+			if (!options.updatePrediction) {
+				return;
+			}
+
+			const predictionId = await logAction('resolvePredictionId', () =>
+				resolvePredictionIdForPool(
+					ctx.client,
+					ctx.publicCtx.me.id,
+					pool.id,
+					ctx.signal,
+				),
+			);
+
 			if (!predictionId) {
 				emit(
 					'error',
@@ -358,89 +383,101 @@ const tryPredict = async (
 					),
 					ctx.publicCtx.slot,
 				);
-			} else {
-				const submitted: BotSubmittedPredictionContext = {
-					pool,
-					value,
-					stake,
-					predictionId,
-				};
-				let updateDecision: BotUpdatePredictionDecision;
-				try {
-					updateDecision = await raceWithAbort(
-						options.updatePrediction(submitted, ctx.publicCtx),
-						ctx.signal,
-					);
-				} catch (err) {
-					emit(
-						'error',
-						lineForError(options, err, ctx.publicCtx.slot),
-						ctx.publicCtx.slot,
-					);
-					updateDecision = null;
-				}
-
-				if (ctx.signal.aborted) {
-					updateDecision = null;
-				}
-
-				if (updateDecision !== null) {
-					if (!Number.isFinite(updateDecision.value)) {
-						emit(
-							'error',
-							lineForError(
-								options,
-								new TrepaError(
-									'updatePrediction returned a non-finite value.',
-									{
-										status: 0,
-										code: 'update_prediction_invalid_value',
-									},
-								),
-								ctx.publicCtx.slot,
-							),
-							ctx.publicCtx.slot,
-						);
-					} else {
-						const updateValue = snapOutcomeToPool(updateDecision.value, pool);
-						try {
-							await ctx.client.predictions.update({
-								predictionId,
-								value: updateValue,
-							});
-							emit(
-								'pred_update',
-								lineForPredictionUpdated(
-									options,
-									{
-										pool,
-										predictionId,
-										previousValue: value,
-										value: updateValue,
-										stake,
-									},
-									ctx.publicCtx.slot,
-								),
-								ctx.publicCtx.slot,
-							);
-						} catch (err) {
-							emit(
-								'error',
-								lineForError(options, err, ctx.publicCtx.slot),
-								ctx.publicCtx.slot,
-							);
-						}
-					}
-				}
+				return;
 			}
+
+			const submitted: BotSubmittedPredictionContext = {
+				pool,
+				value,
+				stake,
+				predictionId,
+			};
+
+			let updateDecision: BotUpdatePredictionDecision;
+			try {
+				updateDecision = await logAction('strategy.updatePrediction', () =>
+					raceWithAbort(
+						options.updatePrediction!(submitted, ctx.publicCtx),
+						ctx.signal,
+					),
+				);
+			} catch (err) {
+				emit(
+					'error',
+					lineForError(options, err, ctx.publicCtx.slot),
+					ctx.publicCtx.slot,
+				);
+				updateDecision = null;
+			}
+
+			if (ctx.signal.aborted) {
+				updateDecision = null;
+			}
+
+			if (updateDecision === null) {
+				return;
+			}
+
+			if (!Number.isFinite(updateDecision.value)) {
+				emit(
+					'error',
+					lineForError(
+						options,
+						new TrepaError(
+							'updatePrediction returned a non-finite value.',
+							{
+								status: 0,
+								code: 'update_prediction_invalid_value',
+							},
+						),
+						ctx.publicCtx.slot,
+					),
+					ctx.publicCtx.slot,
+				);
+				return;
+			}
+
+			const updateValue = snapOutcomeToPool(updateDecision.value, pool);
+			try {
+				await logAction(
+					'predictions.update',
+					() =>
+						ctx.client.predictions.update({
+							predictionId,
+							value: updateValue,
+						}),
+					{ prediction_id: predictionId },
+				);
+				emit(
+					'pred_update',
+					lineForPredictionUpdated(
+						options,
+						{
+							pool,
+							predictionId,
+							previousValue: value,
+							value: updateValue,
+							stake,
+						},
+						ctx.publicCtx.slot,
+					),
+					ctx.publicCtx.slot,
+				);
+			} catch (err) {
+				emit(
+					'error',
+					lineForError(options, err, ctx.publicCtx.slot),
+					ctx.publicCtx.slot,
+				);
+			}
+		} catch (err) {
+			emit(
+				'error',
+				lineForError(options, err, ctx.publicCtx.slot),
+				ctx.publicCtx.slot,
+			);
 		}
-	} catch (err) {
-		emit(
-			'error',
-			lineForError(options, err, ctx.publicCtx.slot),
-			ctx.publicCtx.slot,
-		);
-	}
+	}, scopeMeta);
 };
 
 async function raceWithAbort<T>(

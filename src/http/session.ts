@@ -2,6 +2,10 @@ import createClient, { type Client, type Middleware } from 'openapi-fetch';
 
 import type { paths } from '../api/schema';
 import { TrepaError, errorFromResponse } from '../core/errors';
+import {
+	getActiveTraceHeaders,
+	logHttpAction,
+} from '../logging/action-logger';
 
 export const DEFAULT_TREPA_API_BASE_URL = 'https://api.trepa.app';
 
@@ -154,8 +158,34 @@ export class Session {
 			},
 		};
 
+		const actionLogMiddleware: Middleware = {
+			onRequest: ({ request }) => {
+				const trace = getActiveTraceHeaders();
+				if (trace) {
+					request.headers.set('X-Tx-Trace-Id', trace.traceId);
+					request.headers.set('X-Tx-Flow', trace.flow);
+				}
+				const headers = request.headers as Headers & {
+					__actionLogStart?: number;
+				};
+				headers.__actionLogStart = performance.now();
+				return request;
+			},
+			onResponse: ({ request, response }) => {
+				const headers = request.headers as Headers & {
+					__actionLogStart?: number;
+				};
+				const startedAt = headers.__actionLogStart;
+				if (startedAt !== undefined) {
+					logHttpAction(request, response, startedAt);
+				}
+				return response;
+			},
+		};
+
 		this.client.use(cookieMiddleware);
 		this.client.use(abortMiddleware);
+		this.client.use(actionLogMiddleware);
 	}
 
 	private throwIfAborted(): void {

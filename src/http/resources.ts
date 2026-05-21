@@ -1,13 +1,6 @@
 import type { Session } from './session';
 import type { components, operations } from '../api/schema';
-
-const sign = async (
-	transaction: string,
-	privateKey: string,
-): Promise<string> => {
-	const { signTransaction } = await import('./sign');
-	return signTransaction(transaction, privateKey);
-};
+import { runSessionPresignedFlow } from './presigned-transaction';
 
 type Schema<K extends keyof components['schemas']> = components['schemas'][K];
 type Query<K extends keyof operations> = operations[K] extends {
@@ -186,9 +179,11 @@ export class PredictionsResource extends Resource {
 		stake: number;
 		value: number;
 	}): Promise<Schema<'SubmittedPredictionTransactionDto'>> {
-		const privateKey = this.session.requirePrivateKey('predictions.create');
-		const prepared = await this.session.request(
-			() =>
+		return runSessionPresignedFlow(this.session, {
+			flow: 'prediction.create',
+			meta: { pool_id: args.poolId },
+			operation: 'predictions.create',
+			build: () =>
 				this.client.POST('/transactions/prediction', {
 					body: {
 						pool_id: args.poolId,
@@ -196,11 +191,8 @@ export class PredictionsResource extends Resource {
 						value: args.value,
 					},
 				}),
-			'Failed to build the prediction transaction',
-		);
-		const signed_transaction = await sign(prepared.transaction, privateKey);
-		return this.session.request(
-			() =>
+			buildError: 'Failed to build the prediction transaction',
+			makeSubmit: (prepared, signed_transaction) => () =>
 				this.client.POST('/transactions/prediction/submit', {
 					body: {
 						pool_id: args.poolId,
@@ -208,25 +200,24 @@ export class PredictionsResource extends Resource {
 						proof: prepared.proof,
 					},
 				}),
-			'Failed to submit the prediction transaction',
-		);
+			submitError: 'Failed to submit the prediction transaction',
+		});
 	}
 
 	async update(args: {
 		predictionId: string;
 		value: number;
 	}): Promise<Schema<'SubmittedPredictionTransactionDto'>> {
-		const privateKey = this.session.requirePrivateKey('predictions.update');
-		const prepared = await this.session.request(
-			() =>
+		return runSessionPresignedFlow(this.session, {
+			flow: 'prediction.update',
+			meta: { prediction_id: args.predictionId },
+			operation: 'predictions.update',
+			build: () =>
 				this.client.POST('/transactions/prediction/update', {
 					body: { prediction_id: args.predictionId, value: args.value },
 				}),
-			'Failed to build the update-prediction transaction',
-		);
-		const signed_transaction = await sign(prepared.transaction, privateKey);
-		return this.session.request(
-			() =>
+			buildError: 'Failed to build the update-prediction transaction',
+			makeSubmit: (prepared, signed_transaction) => () =>
 				this.client.POST('/transactions/prediction/update/submit', {
 					body: {
 						prediction_id: args.predictionId,
@@ -234,27 +225,24 @@ export class PredictionsResource extends Resource {
 						proof: prepared.proof,
 					},
 				}),
-			'Failed to submit the update-prediction transaction',
-		);
+			submitError: 'Failed to submit the update-prediction transaction',
+		});
 	}
 
 	async updateStake(args: {
 		predictionId: string;
 		stake: number;
 	}): Promise<Schema<'SubmittedPredictionTransactionDto'>> {
-		const privateKey = this.session.requirePrivateKey(
-			'predictions.updateStake',
-		);
-		const prepared = await this.session.request(
-			() =>
+		return runSessionPresignedFlow(this.session, {
+			flow: 'stake.update',
+			meta: { prediction_id: args.predictionId },
+			operation: 'predictions.updateStake',
+			build: () =>
 				this.client.POST('/transactions/stake/update', {
 					body: { prediction_id: args.predictionId, stake: args.stake },
 				}),
-			'Failed to build the update-stake transaction',
-		);
-		const signed_transaction = await sign(prepared.transaction, privateKey);
-		return this.session.request(
-			() =>
+			buildError: 'Failed to build the update-stake transaction',
+			makeSubmit: (prepared, signed_transaction) => () =>
 				this.client.POST('/transactions/stake/update/submit', {
 					body: {
 						prediction_id: args.predictionId,
@@ -262,8 +250,8 @@ export class PredictionsResource extends Resource {
 						proof: prepared.proof,
 					},
 				}),
-			'Failed to submit the update-stake transaction',
-		);
+			submitError: 'Failed to submit the update-stake transaction',
+		});
 	}
 }
 
@@ -272,17 +260,16 @@ export class RewardsResource extends Resource {
 		poolId: string;
 		rewardId: string;
 	}): Promise<Schema<'SubmittedClaimTransactionDto'>> {
-		const privateKey = this.session.requirePrivateKey('rewards.claim');
-		const prepared = await this.session.request(
-			() =>
+		return runSessionPresignedFlow(this.session, {
+			flow: 'claim.reward',
+			meta: { pool_id: args.poolId, reward_id: args.rewardId },
+			operation: 'rewards.claim',
+			build: () =>
 				this.client.POST('/transactions/claim-reward', {
 					body: { pool_id: args.poolId },
 				}),
-			'Failed to build the claim-reward transaction',
-		);
-		const signed_transaction = await sign(prepared.transaction, privateKey);
-		return this.session.request(
-			() =>
+			buildError: 'Failed to build the claim-reward transaction',
+			makeSubmit: (prepared, signed_transaction) => () =>
 				this.client.POST('/transactions/claim-reward/submit', {
 					body: {
 						reward_id: args.rewardId,
@@ -290,8 +277,8 @@ export class RewardsResource extends Resource {
 						proof: prepared.proof,
 					},
 				}),
-			'Failed to submit the claim-reward transaction',
-		);
+			submitError: 'Failed to submit the claim-reward transaction',
+		});
 	}
 }
 
@@ -301,9 +288,11 @@ export class WithdrawalsResource extends Resource {
 		amount: number;
 		mintAddress: string;
 	}): Promise<Schema<'SubmittedWithdrawTransactionDto'>> {
-		const privateKey = this.session.requirePrivateKey('withdrawals.create');
-		const prepared = await this.session.request(
-			() =>
+		return runSessionPresignedFlow(this.session, {
+			flow: 'withdraw',
+			meta: { to_address: args.toAddress, amount: args.amount },
+			operation: 'withdrawals.create',
+			build: () =>
 				this.client.POST('/transactions/withdraw', {
 					body: {
 						to_address: args.toAddress,
@@ -311,11 +300,8 @@ export class WithdrawalsResource extends Resource {
 						mint_address: args.mintAddress,
 					},
 				}),
-			'Failed to build the withdraw transaction',
-		);
-		const signed_transaction = await sign(prepared.transaction, privateKey);
-		return this.session.request(
-			() =>
+			buildError: 'Failed to build the withdraw transaction',
+			makeSubmit: (prepared, signed_transaction) => () =>
 				this.client.POST('/transactions/withdraw/submit', {
 					body: {
 						to_address: args.toAddress,
@@ -324,7 +310,7 @@ export class WithdrawalsResource extends Resource {
 						proof: prepared.proof,
 					},
 				}),
-			'Failed to submit the withdraw transaction',
-		);
+			submitError: 'Failed to submit the withdraw transaction',
+		});
 	}
 }

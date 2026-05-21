@@ -3,6 +3,7 @@ dist/
 .openapi-cache/
 .tsbuildinfo
 *.log
+logs/
 
 .env
 .env.local
