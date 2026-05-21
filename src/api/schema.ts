@@ -550,6 +550,22 @@ export interface components {
     schemas: {
         /** @enum {string} */
         UserRole: "USER" | "ADMIN";
+        RedactedUserDto: {
+            id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: date-time */
+            last_seen_at: string;
+            invite_id?: string | null;
+            avatar_id?: string | null;
+            username: string;
+            twitter_username?: string | null;
+            has_seen_tour: boolean;
+            role: components["schemas"]["UserRole"];
+            wallet_address: string;
+        };
         UserDto: {
             id: string;
             /** Format: date-time */
@@ -1033,6 +1049,33 @@ export interface components {
         };
         /** @enum {string} */
         ALL_PREDICTION_RELATIONS: "user" | "pool" | "reward" | "streak" | "pool.image" | "pool.resolution";
+        PredictionDto: {
+            id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            pool_account: string;
+            predictor_account: string;
+            prediction_account: string;
+            prediction: number;
+            precision: number;
+            stake_token_mint: string;
+            stake: number;
+            decimals: number;
+            last_applied_value_revision: number;
+            last_applied_stake_revision: number;
+            is_fee_payer: boolean;
+            is_closed: boolean;
+            bump: number;
+            /** Format: date-time */
+            last_sync_at: string;
+        };
+        PoolCrowdDto: {
+            mean: number | null;
+            sigma: number | null;
+            predictions: components["schemas"]["PredictionDto"][];
+        };
         PoolStatisticsDto: {
             winning_range: number[] | null;
             total_predictors_count: number;
@@ -1412,7 +1455,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UserDto"];
+                    "application/json": components["schemas"]["RedactedUserDto"];
                 };
             };
             /** @description The authentication has failed. */
