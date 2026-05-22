@@ -2,7 +2,6 @@ import { Trepa, credentialsFromEnv } from '@trepa/sdk';
 
 import {
 	fetchBtcPrice,
-	fetchBtcStdLogReturns,
 	inverseNormalCdf,
 	waitUntilPredictSlot,
 } from './utils.ts';
@@ -21,7 +20,7 @@ await trepa.bots.run(({ index, count }) => ({
 
 		const [price, stdLogReturns] = await Promise.all([
 			fetchBtcPrice(),
-			fetchBtcStdLogReturns().catch(() => FALLBACK_STD_LOG_RETURNS),
+			Promise.resolve(FALLBACK_STD_LOG_RETURNS),
 		]);
 
 		const closeTs = new Date(pool.prediction_end_date).getTime();
