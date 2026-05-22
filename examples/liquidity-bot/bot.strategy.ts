@@ -7,6 +7,9 @@ import {
 	waitUntilPredictSlot,
 } from './utils.ts';
 
+// Fallback value for when the Pyth API is down or the data is not available (https://status.pyth.network/)
+const FALLBACK_STD_LOG_RETURNS = 0.0004;
+
 const trepa = new Trepa({
 	credentials: credentialsFromEnv(),
 });
@@ -18,7 +21,7 @@ await trepa.bots.run(({ index, count }) => ({
 
 		const [price, stdLogReturns] = await Promise.all([
 			fetchBtcPrice(),
-			fetchBtcStdLogReturns(),
+			fetchBtcStdLogReturns().catch(() => FALLBACK_STD_LOG_RETURNS),
 		]);
 
 		const closeTs = new Date(pool.prediction_end_date).getTime();
