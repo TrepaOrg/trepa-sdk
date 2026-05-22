@@ -86,8 +86,25 @@ const MAX_BOUNDARY_DRIFT_SEC = 120;
 const MIN_SAMPLE_COUNT = Math.floor((SEVEN_DAYS_SEC / 60) * MIN_COVERAGE_RATIO);
 
 const STDDEV_CACHE_TTL_MS = 30 * 60 * 1000;
+const STDDEV_STALE_MAX_MS = 24 * 60 * 60 * 1000;
+const PYTH_FETCH_MAX_ATTEMPTS = 5;
+const PYTH_CHUNK_DELAY_MS = 200;
+
 let cachedStddev: { value: number; computedAt: number } | null = null;
 let inflightStddev: Promise<number> | null = null;
+
+const delayMs = (ms: number): Promise<void> =>
+	new Promise((resolve) => {
+		setTimeout(resolve, ms);
+	});
+
+const parseRetryAfterMs = (headers: Headers): number | undefined => {
+	const raw = headers.get('retry-after');
+	if (!raw) return undefined;
+	const sec = Number.parseInt(raw, 10);
+	if (!Number.isNaN(sec) && sec >= 0) return sec * 1000;
+	return undefined;
+};
 
 interface PythOhlcResponse {
 	s: string;
@@ -112,6 +129,14 @@ export const fetchBtcStdLogReturns = async (): Promise<number> => {
 			const value = await computeStdLogReturns();
 			cachedStddev = { value, computedAt: Date.now() };
 			return value;
+		} catch (err) {
+			if (
+				cachedStddev !== null &&
+				Date.now() - cachedStddev.computedAt < STDDEV_STALE_MAX_MS
+			) {
+				return cachedStddev.value;
+			}
+			throw err;
 		} finally {
 			inflightStddev = null;
 		}
@@ -143,9 +168,13 @@ const computeStdLogReturns = async (): Promise<number> => {
 		current = dayEnd;
 	}
 
-	const responses = await Promise.all(
-		dayRanges.map(({ from, to }) => fetchPythOhlc(from, to)),
-	);
+	const responses: PythOhlcResponse[] = [];
+	for (const { from, to } of dayRanges) {
+		if (responses.length > 0) {
+			await delayMs(PYTH_CHUNK_DELAY_MS);
+		}
+		responses.push(await fetchPythOhlc(from, to));
+	}
 
 	const candles: Array<{ timestamp: number; close: number }> = [];
 
@@ -235,9 +264,20 @@ const fetchPythOhlc = async (
 	url.searchParams.set('from', String(from));
 	url.searchParams.set('to', String(to));
 
-	const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
-	if (!res.ok) {
-		throw new Error(`Pyth OHLC chunk returned HTTP ${res.status}`);
+	for (let attempt = 1; ; attempt++) {
+		const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+		if (res.ok) {
+			return (await res.json()) as PythOhlcResponse;
+		}
+
+		const transient = res.status === 429 || res.status === 503;
+		if (!transient || attempt >= PYTH_FETCH_MAX_ATTEMPTS) {
+			throw new Error(`Pyth OHLC chunk returned HTTP ${res.status}`);
+		}
+
+		const retryAfterMs = parseRetryAfterMs(res.headers);
+		const backoff =
+			retryAfterMs ?? Math.min(60_000, 1_000 * 2 ** (attempt - 1));
+		await delayMs(backoff + Math.floor(Math.random() * 250));
 	}
-	return (await res.json()) as PythOhlcResponse;
 };
