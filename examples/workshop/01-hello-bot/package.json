@@ -1,8 +1,9 @@
 {
-  "name": "@trepa/example-spot-bot",
+  "name": "@trepa/workshop-01-hello-bot",
+  "private": true,
   "type": "module",
   "scripts": {
-    "start": "node bot.strategy.ts"
+    "start": "node --env-file=.env bot.strategy.ts"
   },
   "engines": {
     "node": ">=22.12.0"

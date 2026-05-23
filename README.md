@@ -71,10 +71,8 @@ Full guides at **[docs.trepa.io/developers](https://docs.trepa.io/developers/int
 
 ## Examples
 
-Sample bots deployable via Docker:
 
-- [`examples/spot-bot`](./examples/spot-bot)
-- [`examples/liquidity-bot`](./examples/liquidity-bot)
+- [`examples/workshop`](./examples/workshop)
 
 ## License
 
