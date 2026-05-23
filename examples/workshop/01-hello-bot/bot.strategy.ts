@@ -13,11 +13,11 @@ const trepa = new Trepa({
 await trepa.bots.run({
 	predict: (pool) => {
 		// Return null to skip this pool
-		// return null; 
+		// return null;
 
 		return {
 			value: 95_000,
-			stake: 1,
+			stake: pool.min_stake,
 		};
 	},
 });
