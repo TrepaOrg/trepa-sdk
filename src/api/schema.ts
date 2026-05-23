@@ -244,6 +244,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/pools/{id}/result": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get pool results
+         * @description Returns aggregate statistics and estimation distribution for a pool.
+         */
+        get: operations["PoolsController_getPoolResult"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pools/{id}/leaderboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get pool leaderboard
+         * @description Returns a paginated, accuracy-ranked leaderboard for a resolved pool.
+         */
+        get: operations["PoolsController_getPoolLeaderboard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/transactions/prediction": {
         parameters: {
             query?: never;
@@ -493,7 +533,7 @@ export interface paths {
         };
         /**
          * Get the current and next pool in a streak
-         * @description Returns the pool currently open for predictions and the next pool in the streak.
+         * @description Returns the pool currently open for predictions and the next pool in the streak. Optionally embed related entities via `includes`.
          */
         get: operations["StreaksController_getPoolDetails"];
         put?: never;
@@ -513,7 +553,7 @@ export interface paths {
         };
         /**
          * List pools in a streak
-         * @description Returns pools in the streak with optional `participated_only`/`past_only` filters and pagination.
+         * @description Returns pools in the streak with optional `past_only` filter and pagination. Does not filter by participation.
          */
         get: operations["StreaksController_getPools"];
         put?: never;
@@ -847,7 +887,6 @@ export interface components {
             is_closed: boolean;
             platform_fee_rate?: number | null;
             indexed_prediction_update_count: number;
-            readonly is_resolved?: boolean | null;
             readonly total_volume?: number | null;
             user?: components["schemas"]["UserDto"];
             resolution?: components["schemas"]["ResolutionDto"];
@@ -878,9 +917,9 @@ export interface components {
             last_used_at?: string | null;
         };
         /** @enum {string} */
-        SortPredictionsBy: "CREATION_DATE" | "RESOLUTION_DATE";
+        FilterPredictionsBy: "ACTIVE" | "CLAIMABLE";
         /** @enum {string} */
-        FilterPredictionsBy: "ACTIVE" | "RESOLVED";
+        SortPredictionsBy: "CREATION_DATE" | "RESOLUTION_DATE";
         LimitedUpdateUserDto: {
             avatar_id?: string | null;
             username?: string;
@@ -945,6 +984,7 @@ export interface components {
             total_profit: number;
             total_loss: number;
             net_profit: number;
+            roi_percent: number | null;
             chart_data: components["schemas"]["PnlChartDataPointDto"][];
         };
         NotificationCountDto: {
@@ -1076,16 +1116,21 @@ export interface components {
             sigma: number | null;
             predictions: components["schemas"]["PredictionDto"][];
         };
-        PoolStatisticsDto: {
+        PoolResultsDto: {
             winning_range: number[] | null;
+            prediction_range: number[] | null;
             total_predictors_count: number;
             total_stake: number;
             outcome: Record<string, never> | null;
             unit: components["schemas"]["PoolUnit"];
             decimals: number;
+            precision: number;
+            min_outcome: number;
+            max_outcome: number;
             precision_score_weighted_average: Record<string, never> | null;
+            crowd_signal_accuracy: Record<string, never> | null;
         };
-        UserResultDto: {
+        PoolLeaderboardUserEntryDto: {
             title: string;
             username: string;
             twitter_username?: string | null;
@@ -1097,15 +1142,12 @@ export interface components {
             profit: number;
             roi: number;
             precision_score: number;
-            position: number;
+            rank: number;
             is_winner: boolean;
+            is_refund: boolean;
         };
-        PoolResultDto: {
-            statistics: components["schemas"]["PoolStatisticsDto"];
-            user_result: components["schemas"]["UserResultDto"];
-            estimation_frequencies: number[][];
-        };
-        PoolRankingEntryDto: {
+        PoolLeaderboardEntryDto: {
+            rank: number;
             username: string;
             twitter_username?: string | null;
             avatar_url: Record<string, never>;
@@ -1115,11 +1157,7 @@ export interface components {
             reward: number;
             profit: number;
             roi: number;
-        };
-        PoolRankingResponseDto: {
-            entries: components["schemas"]["PoolRankingEntryDto"][];
-            total: number;
-            user_result: components["schemas"]["UserResultDto"];
+            is_refund: boolean;
         };
         MechanismPayoutSampleDto: {
             outcome: number;
@@ -1278,6 +1316,7 @@ export interface components {
             title: string;
             streak_count_required: number;
             min_precision_score_required: number;
+            available_balance: number;
         };
         StreakPoolDetailsDto: {
             /** @description Current active pool for the streak */
@@ -1509,8 +1548,10 @@ export interface operations {
     UsersController_findUserPredictions: {
         parameters: {
             query?: {
-                sort_by?: components["schemas"]["SortPredictionsBy"];
                 filter_by?: components["schemas"]["FilterPredictionsBy"][];
+                sort_by?: components["schemas"]["SortPredictionsBy"];
+                streak_id?: string;
+                past_only?: boolean;
                 query?: string;
                 offset?: number;
                 limit?: number;
@@ -1733,6 +1774,69 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PredictionWithRelationsDto"][];
+                };
+            };
+            /** @description The pool has not been found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PoolsController_getPoolResult: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Pool identifier */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The pool results have been retrieved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PoolResultsDto"];
+                };
+            };
+            /** @description The pool has not been found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PoolsController_getPoolLeaderboard: {
+        parameters: {
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Pool identifier */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The pool leaderboard has been retrieved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PoolLeaderboardEntryDto"][];
                 };
             };
             /** @description The pool has not been found. */
@@ -2121,6 +2225,7 @@ export interface operations {
             query: {
                 /** @description Streak UUID */
                 streak_id: string;
+                includes?: components["schemas"]["ALL_POOL_RELATIONS"][];
             };
             header?: never;
             path?: never;
