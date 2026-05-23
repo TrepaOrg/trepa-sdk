@@ -5,7 +5,7 @@ import { BTC } from './utils.ts';
 /**
  * Bot 2 — Spot price
  *
- * Async predict: pull live BTC from Binance, stake the pool minimum.
+ * Async predict: pull live BTC from Binance.
  */
 
 const trepa = new Trepa({
