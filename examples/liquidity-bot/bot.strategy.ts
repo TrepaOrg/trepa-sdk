@@ -35,16 +35,11 @@ await trepa.bots.run(({ index, count }) => ({
 		await waitUntilPredictSlot(pool, index);
 
 		const value = await computeLadderValue(index, count);
-		const stake = pool.min_stake;
 
-		return { value, stake };
+		return { value, stake: pool.min_stake };
 	},
 	updatePrediction: async (prediction) => {
 		await waitUntilUpdateSlot(prediction.pool, index);
-
-		if (Date.now() >= new Date(prediction.pool.prediction_end_date).getTime()) {
-			return null;
-		}
 
 		const value = await computeLadderValue(index, count);
 
