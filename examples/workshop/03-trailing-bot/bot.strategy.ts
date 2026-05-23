@@ -8,6 +8,8 @@ import { BTC, wait } from './utils.ts';
  * Submit spot once, then revise before the window closes.
  */
 
+const LEAD_TIME_MS = 5_000;
+
 const trepa = new Trepa({
 	credentials: credentialsFromEnv(),
 });
@@ -20,17 +22,13 @@ await trepa.bots.run({
 	},
 
 	updatePrediction: async (info) => {
-		const endMs = new Date(info.pool.prediction_end_date).getTime();
+		const end = new Date(info.pool.prediction_end_date).getTime();
+		const now = Date.now();
 
-		if (Date.now() >= endMs) {
-			return null;
-		}
-
-		await wait(8_000);
-
-		if (Date.now() >= endMs) {
-			return null;
-		}
+		const timeLeft = end - now;
+		const timeToWait = timeLeft - LEAD_TIME_MS;
+		
+		await wait(timeToWait);
 
 		const spot = await BTC();
 
