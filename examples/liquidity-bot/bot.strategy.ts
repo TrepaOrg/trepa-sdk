@@ -20,9 +20,7 @@ const computeLadderValue = async (
 
 	const sigma = price * stdLogReturns;
 	const z =
-		count <= 1
-			? 0
-			: -SIGMA_LIMIT + (2 * SIGMA_LIMIT * index) / (count - 1);
+		count <= 1 ? 0 : -SIGMA_LIMIT + (2 * SIGMA_LIMIT * index) / (count - 1);
 
 	return price + sigma * z;
 };
