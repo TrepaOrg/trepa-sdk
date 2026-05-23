@@ -7,7 +7,7 @@ import {
 	waitUntilUpdateSlot,
 } from './utils.ts';
 
-const SIGMA_LIMIT = 1;
+const SIGMA_LIMIT = 0.25;
 
 const computeLadderValue = async (
 	index: number,
