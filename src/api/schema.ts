@@ -144,7 +144,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/users/{user_id}/portfolio": {
+    "/users/{id}/portfolio": {
         parameters: {
             query?: never;
             header?: never;
@@ -1627,7 +1627,7 @@ export interface operations {
             header?: never;
             path: {
                 /** @description User identifier */
-                user_id: string;
+                id: string;
             };
             cookie?: never;
         };
