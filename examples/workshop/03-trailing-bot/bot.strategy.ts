@@ -27,7 +27,7 @@ await trepa.bots.run({
 
 		const timeLeft = end - now;
 		const timeToWait = timeLeft - LEAD_TIME_MS;
-		
+
 		await wait(timeToWait);
 
 		const spot = await BTC();

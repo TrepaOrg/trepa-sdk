@@ -70,10 +70,10 @@ export class UsersResource extends Resource {
 		);
 	}
 
-	async portfolio(userId: string): Promise<Schema<'PortfolioDto'>> {
+	async portfolio(id: string): Promise<Schema<'PortfolioDto'>> {
 		return this.session.request(() =>
-			this.client.GET('/users/{user_id}/portfolio', {
-				params: { path: { user_id: userId } },
+			this.client.GET('/users/{id}/portfolio', {
+				params: { path: { id } },
 			}),
 		);
 	}
