@@ -173,7 +173,7 @@ export interface paths {
         };
         /**
          * Get your progress in a streak
-         * @description Returns your current streak count and any streak rewards you have earned.
+         * @description Returns your current streak count, streak rewards, and streak pool processing state.
          */
         get: operations["UsersController_getStreakDetails"];
         put?: never;
@@ -532,8 +532,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get the current and next pool in a streak
-         * @description Returns the pool currently open for predictions and the next pool in the streak. Optionally embed related entities via `includes`.
+         * Get current, next, and previous pools in a streak
+         * @description Returns the pool currently open for predictions, the next active pool (by prediction_end_date), and the previous pool in the streak chain. Optionally embed related entities via `includes`.
          */
         get: operations["StreaksController_getPoolDetails"];
         put?: never;
@@ -796,6 +796,7 @@ export interface components {
             created_at: string;
             /** Format: date-time */
             updated_at: string;
+            last_processed_pool_id: Record<string, never> | null;
             streak_accumulator_account: string;
             title: string;
             /** @example 5 */
@@ -841,6 +842,7 @@ export interface components {
             created_at: string;
             /** Format: date-time */
             updated_at: string;
+            last_processed_pool_id: Record<string, never> | null;
             streak_accumulator_account: string;
             title: string;
             /** @example 5 */
@@ -1045,6 +1047,8 @@ export interface components {
             last_streak_event: components["schemas"]["StreakEvent"];
             streak_rewards?: components["schemas"]["StreakRewardWithRelationsDto"][];
             current_streak_scores?: number[];
+            /** Format: uuid */
+            last_processed_pool_id?: string | null;
         };
         CreateNewPoolDto: {
             min_outcome: number;
@@ -1058,6 +1062,23 @@ export interface components {
             streak_id: string;
         };
         Job: Record<string, never>;
+        /** @enum {string} */
+        AutoBatchPoolStatus: "QUEUED" | "SKIPPED" | "FAILED";
+        CleanupPoolResultDto: {
+            pool_id: string;
+            status: components["schemas"]["AutoBatchPoolStatus"];
+            job_id?: string;
+            error?: string;
+            skip_reason?: string;
+        };
+        CleanupPoolsResponseDto: {
+            total_found: number;
+            total_eligible: number;
+            successfully_queued: number;
+            failed: number;
+            skipped: number;
+            results: components["schemas"]["CleanupPoolResultDto"][];
+        };
         /** @enum {string} */
         SortPoolsBy: "END_DATE" | "CREATION_DATE" | "OLD_CREATION_DATE" | "VOLUME_HIGH" | "VOLUME_LOW";
         /** @enum {string} */
@@ -1089,32 +1110,20 @@ export interface components {
         };
         /** @enum {string} */
         ALL_PREDICTION_RELATIONS: "user" | "pool" | "reward" | "streak" | "pool.image" | "pool.resolution";
-        PredictionDto: {
+        CrowdPredictionDto: {
             id: string;
-            /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            updated_at: string;
-            pool_account: string;
-            predictor_account: string;
-            prediction_account: string;
             prediction: number;
-            precision: number;
-            stake_token_mint: string;
             stake: number;
-            decimals: number;
-            last_applied_value_revision: number;
-            last_applied_stake_revision: number;
-            is_fee_payer: boolean;
-            is_closed: boolean;
-            bump: number;
-            /** Format: date-time */
-            last_sync_at: string;
         };
         PoolCrowdDto: {
-            mean: number | null;
-            sigma: number | null;
-            predictions: components["schemas"]["PredictionDto"][];
+            predictions: components["schemas"]["CrowdPredictionDto"][];
+            /** Format: date-time */
+            server_time: string;
+        };
+        CrowdCurveDto: {
+            price_min: number;
+            price_max: number;
+            densities: number[];
         };
         PoolResultsDto: {
             winning_range: number[] | null;
@@ -1319,10 +1328,9 @@ export interface components {
             available_balance: number;
         };
         StreakPoolDetailsDto: {
-            /** @description Current active pool for the streak */
             current_pool?: components["schemas"]["PoolWithRelationsDto"] | null;
-            /** @description Next pool for the streak (by prediction_end_date) */
             next_pool?: components["schemas"]["PoolWithRelationsDto"] | null;
+            previous_pool?: components["schemas"]["PoolWithRelationsDto"] | null;
         };
         StreakPoolsListDto: {
             /** @description All pools linked to the streak */
