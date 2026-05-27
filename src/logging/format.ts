@@ -1,4 +1,3 @@
-import { TrepaError, describeChainedError, formatTrepaError } from '../core/errors';
 import type { EventKind, TrepaLogSlot } from './event-kind';
 import {
 	inkLayoutIsSwarm,
@@ -10,6 +9,11 @@ import {
 	setInkSwarmLayout,
 	unmountInk,
 } from './log-ink';
+import {
+	TrepaError,
+	describeChainedError,
+	formatTrepaError,
+} from '../core/errors';
 import { SDK_DOCS_URL, SDK_VERSION } from '../core/version';
 import { DEFAULT_TREPA_API_BASE_URL } from '../http/session';
 
