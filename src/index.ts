@@ -1,7 +1,11 @@
 export { ensureTrepaEnvLoaded } from './config/env-load';
 export { Trepa, type TrepaConfig } from './http/trepa';
 export { TrepaClient } from './http/client';
-export { TrepaError } from './core/errors';
+export {
+	TrepaError,
+	formatTrepaError,
+	describeChainedError,
+} from './core/errors';
 export { signTransaction } from './http/sign';
 export { Bots, credentialsFromEnv, snapOutcomeToPool } from './bots';
 export type {

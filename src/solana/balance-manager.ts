@@ -31,7 +31,11 @@ import { startMasterWalletHudMirror } from './wallet-hud';
 import type { WalletHudWalletSeed } from './wallet-hud-batch';
 import type { BotCredentials } from '../bots/types';
 import { ensureTrepaEnvLoaded } from '../config/env-load';
-import { TrepaError } from '../core/errors';
+import {
+	TrepaError,
+	describeChainedError,
+	formatTrepaError,
+} from '../core/errors';
 import type { Trepa } from '../http/trepa';
 import {
 	trepaLog,
@@ -577,22 +581,8 @@ async function createSignerFromBase58(
 	return createKeyPairSignerFromBytes(bytes as Uint8Array);
 }
 
-function describeChainedError(err: unknown): string {
-	if (!(err instanceof Error)) return String(err);
-	const parts: string[] = [];
-	let e: unknown = err;
-	for (let i = 0; i < 8 && e instanceof Error; i++) {
-		if (e.message) parts.push(e.message.trim());
-		e = e.cause;
-	}
-	return parts.length > 0 ? parts.join(' → ') : String(err);
-}
-
 function describeBootstrapError(err: unknown): string {
-	if (err instanceof TrepaError) {
-		const status = err.status > 0 ? `HTTP ${err.status}` : 'request failed';
-		return `${status}: ${err.message}`;
-	}
+	if (err instanceof TrepaError) return formatTrepaError(err);
 	return describeChainedError(err);
 }
 

@@ -1,3 +1,4 @@
+import { TrepaError, describeChainedError, formatTrepaError } from '../core/errors';
 import type { EventKind, TrepaLogSlot } from './event-kind';
 import {
 	inkLayoutIsSwarm,
@@ -149,9 +150,16 @@ export const formatNumber = (value: number, decimals: number): string =>
 		maximumFractionDigits: decimals,
 	});
 
-/** Best-effort string for logging. */
+/** Best-effort string for logging (includes HTTP metadata and cause chains). */
 export const formatError = (err: unknown): string => {
-	if (err instanceof Error) return `${err.name}: ${err.message}`;
+	if (err instanceof TrepaError) return formatTrepaError(err);
+	if (err instanceof Error) {
+		const chain = describeChainedError(err);
+		if (chain !== err.message.trim()) {
+			return `${err.name}: ${chain}`;
+		}
+		return `${err.name}: ${err.message}`;
+	}
 	return String(err);
 };
 

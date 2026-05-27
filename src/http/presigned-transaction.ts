@@ -30,10 +30,16 @@ export async function runSessionPresignedFlow<TSubmitted>(
 	},
 ): Promise<TSubmitted> {
 	const privateKey = session.requirePrivateKey(options.operation);
-	const prepared = await session.request(options.build, options.buildError);
+	const reqOpts = { operation: options.operation };
+	const prepared = await session.request(
+		options.build,
+		options.buildError,
+		reqOpts,
+	);
 	const signedTransaction = await sign(prepared.transaction, privateKey);
 	return session.request(
 		options.makeSubmit(prepared, signedTransaction),
 		options.submitError,
+		reqOpts,
 	);
 }

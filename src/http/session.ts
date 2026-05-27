@@ -167,6 +167,7 @@ export class Session {
 	async request<T>(
 		fn: () => Promise<FetchResult<T>>,
 		fallbackMessage = 'Trepa API error',
+		options?: { operation?: string },
 	): Promise<T> {
 		await this.ensureSession();
 		this.throwIfAborted();
@@ -188,6 +189,7 @@ export class Session {
 				resolved.payload,
 				fallbackMessage,
 				resolved.unparsedText,
+				{ operation: options?.operation ?? fallbackMessage },
 			);
 		}
 		return result.data as T;
@@ -216,6 +218,7 @@ export class Session {
 			resolved.payload,
 			'Failed to refresh Trepa session',
 			resolved.unparsedText,
+			{ operation: 'auth.refresh' },
 		);
 	}
 
@@ -288,6 +291,7 @@ export class Session {
 			resolved.payload,
 			'Failed to start Trepa session',
 			resolved.unparsedText,
+			{ operation: 'auth.session' },
 		);
 	}
 }
