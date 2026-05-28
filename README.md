@@ -62,7 +62,7 @@ node bot.ts
 ```
 
 > [!TIP]
-> Node.js 22.12 or newer can execute `.ts` entrypoints directly. On older Node versions, compile with `tsc` and run the emitted JavaScript, use a runner such as `tsx` instead.
+> Node.js 22.12 or newer can execute `.ts` entrypoints directly. On older Node versions, compile with `tsc` and run the emitted JavaScript, or use a runner such as `tsx` instead.
 
 Full guides at **[docs.trepa.io/developers](https://docs.trepa.io/developers/introduction)**:
 
