@@ -106,9 +106,13 @@ const PYTH_RESOLUTION = '1';
 
 const ONE_DAY_SEC = 24 * 3600;
 const SEVEN_DAYS_SEC = 7 * ONE_DAY_SEC;
+const PYTH_CANDLE_SECONDS = 60;
+const SIXTY_SECONDS_TO_THIRTY_SECONDS_FACTOR = 1 / Math.SQRT2;
 const MIN_COVERAGE_RATIO = 0.95;
 const MAX_BOUNDARY_DRIFT_SEC = 120;
-const MIN_SAMPLE_COUNT = Math.floor((SEVEN_DAYS_SEC / 60) * MIN_COVERAGE_RATIO);
+const MIN_SAMPLE_COUNT = Math.floor(
+	(SEVEN_DAYS_SEC / PYTH_CANDLE_SECONDS) * MIN_COVERAGE_RATIO,
+);
 
 const STDDEV_CACHE_TTL_MS = 30 * 60 * 1000;
 const STDDEV_STALE_MAX_MS = 24 * 60 * 60 * 1000;
@@ -270,13 +274,13 @@ const computeStdLogReturns = async (): Promise<number> => {
 	const mean = logReturns.reduce((a, b) => a + b, 0) / n;
 	const variance =
 		logReturns.reduce((acc, x) => acc + (x - mean) ** 2, 0) / (n - 1);
-	const std = Math.sqrt(variance);
+	const sixtySecondStd = Math.sqrt(variance);
 
-	if (!Number.isFinite(std) || std <= 0) {
+	if (!Number.isFinite(sixtySecondStd) || sixtySecondStd <= 0) {
 		throw new Error('Pyth 7d: invalid std computed');
 	}
 
-	return std;
+	return sixtySecondStd * SIXTY_SECONDS_TO_THIRTY_SECONDS_FACTOR;
 };
 
 const fetchPythOhlc = async (
