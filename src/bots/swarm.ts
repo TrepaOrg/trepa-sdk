@@ -14,6 +14,7 @@ import type {
 	BotSwarmDefaults,
 } from './types';
 import { ensureTrepaEnvLoaded } from '../config/env-load';
+import { composeAbortSignals } from '../core/abort-signals';
 import { TrepaError } from '../core/errors';
 import { TrepaClient } from '../http/client';
 import { Session, type SessionConfig } from '../http/session';
@@ -240,9 +241,10 @@ export class Bots {
 						);
 					}
 					const opts = withTag(slot, factory(slot));
-					const signal = opts.signal
-						? AbortSignal.any([swarmAc.signal, opts.signal])
-						: swarmAc.signal;
+					const { signal, cleanup: cleanupSignal } = composeAbortSignals(
+						swarmAc.signal,
+						opts.signal,
+					);
 					const session = new Session({
 						...this.sessionDefaults,
 						...creds,
@@ -264,6 +266,7 @@ export class Bots {
 								emit('error', lineForError(opts, err, slot), slot);
 							}
 						}
+						cleanupSignal();
 					}
 				}),
 			]);

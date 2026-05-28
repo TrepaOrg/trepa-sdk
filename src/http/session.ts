@@ -1,6 +1,7 @@
 import createClient, { type Client, type Middleware } from 'openapi-fetch';
 
 import type { paths } from '../api/schema';
+import { composeAbortSignals } from '../core/abort-signals';
 import { TrepaError, errorFromResponse } from '../core/errors';
 
 export const DEFAULT_TREPA_API_BASE_URL = 'https://api.trepa.app';
@@ -113,6 +114,7 @@ export class Session {
 
 	private readonly jar: CookieJar = new Map();
 	private readonly requestAbort?: AbortSignal;
+	private readonly abortCleanups = new Map<string, () => void>();
 	private bootstrap?: Promise<void>;
 
 	constructor(config: SessionConfig = {}) {
@@ -138,8 +140,15 @@ export class Session {
 			},
 		};
 
+		const releaseAbortCleanup = (id: string): void => {
+			const cleanup = this.abortCleanups.get(id);
+			if (!cleanup) return;
+			this.abortCleanups.delete(id);
+			cleanup();
+		};
+
 		const abortMiddleware: Middleware = {
-			onRequest: ({ request }) => {
+			onRequest: ({ request, id }) => {
 				const s = this.requestAbort;
 				if (!s) return;
 				if (s.aborted) {
@@ -148,9 +157,16 @@ export class Session {
 					});
 				}
 				const incoming = request.signal;
-				const merged =
-					incoming && !incoming.aborted ? AbortSignal.any([incoming, s]) : s;
-				return new Request(request, { signal: merged });
+				const { signal, cleanup } = composeAbortSignals(s, incoming);
+				this.abortCleanups.set(id, cleanup);
+				return new Request(request, { signal });
+			},
+			onResponse: ({ response, id }) => {
+				releaseAbortCleanup(id);
+				return response;
+			},
+			onError: ({ id }) => {
+				releaseAbortCleanup(id);
 			},
 		};
 
