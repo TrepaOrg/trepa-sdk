@@ -20,7 +20,7 @@
     "url": "git+https://github.com/TrepaOrg/trepa-sdk.git"
   },
   "license": "MIT",
-  "author": "Trepa <leon@trepa.io> (https://trepa.app)",
+  "author": "Trepa <leon@trepa.io> (https://trepa.io)",
   "type": "module",
   "sideEffects": false,
   "main": "./dist/index.cjs",
