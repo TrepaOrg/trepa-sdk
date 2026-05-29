@@ -81,10 +81,7 @@ export const retryHttpAttempt = async (
 			return result;
 		}
 		await delayMs(
-			backoffWithJitter(
-				attempt,
-				parseRetryAfterMs(result.response.headers),
-			),
+			backoffWithJitter(attempt, parseRetryAfterMs(result.response.headers)),
 			options.signal,
 		);
 	}

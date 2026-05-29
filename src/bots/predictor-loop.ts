@@ -1,3 +1,4 @@
+import { fetchSharedPoolDetails } from './cache';
 import {
 	DEFAULT_POLL_INTERVAL_MS,
 	DEFAULT_POST_RESOLVE_BUFFER_MS,
@@ -12,7 +13,6 @@ import {
 	lineForReady,
 	lineForSkipped,
 } from './log-lines';
-import { fetchSharedPoolDetails } from './cache';
 import { snapOutcomeToPool } from './outcomes';
 import type {
 	BotContext,
