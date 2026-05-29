@@ -3,6 +3,14 @@ import createClient, { type Client, type Middleware } from 'openapi-fetch';
 import type { paths } from '../api/schema';
 import { composeAbortSignals } from '../core/abort-signals';
 import { TrepaError, errorFromResponse } from '../core/errors';
+import {
+	DEFAULT_MAX_ATTEMPTS,
+	backoffWithJitter,
+	delayMs,
+	isTransientHttpStatus,
+	parseRetryAfterMs,
+	retryHttpAttempt,
+} from '../core/retry';
 
 export const DEFAULT_TREPA_API_BASE_URL = 'https://api.trepa.app';
 
@@ -20,62 +28,6 @@ const parseCookiePair = (raw: string): [string, string] | null => {
 
 const formatCookieHeader = (jar: CookieJar): string =>
 	[...jar.entries()].map(([name, value]) => `${name}=${value}`).join('; ');
-
-const delayMs = (ms: number, signal?: AbortSignal): Promise<void> => {
-	if (ms <= 0) return Promise.resolve();
-	if (!signal) {
-		return new Promise((resolve) => {
-			setTimeout(resolve, ms);
-		});
-	}
-	return new Promise((resolve, reject) => {
-		if (signal.aborted) {
-			reject(new DOMException('Aborted', 'AbortError'));
-			return;
-		}
-		const timer = setTimeout(() => {
-			signal.removeEventListener('abort', onAbort);
-			resolve();
-		}, ms);
-		const onAbort = (): void => {
-			clearTimeout(timer);
-			signal.removeEventListener('abort', onAbort);
-			reject(new DOMException('Aborted', 'AbortError'));
-		};
-		signal.addEventListener('abort', onAbort, { once: true });
-	});
-};
-
-const parseRetryAfterMs = (headers: Headers): number | undefined => {
-	const raw = headers.get('retry-after');
-	if (!raw) return undefined;
-	const sec = Number.parseInt(raw, 10);
-	if (!Number.isNaN(sec) && sec >= 0) return sec * 1000;
-	return undefined;
-};
-
-type PostAttempt = { error?: unknown; response: Response };
-
-const fetchWithTransientRetry = async (
-	fn: () => Promise<PostAttempt>,
-	maxAttempts: number,
-	signal?: AbortSignal,
-): Promise<PostAttempt> => {
-	for (let attempt = 1; ; attempt++) {
-		if (signal?.aborted) {
-			throw new DOMException('Aborted', 'AbortError');
-		}
-		const result = await fn();
-		if (result.response.ok) return result;
-		const transient =
-			result.response.status === 429 || result.response.status === 503;
-		if (!transient || attempt >= maxAttempts) return result;
-		const retryAfterMs = parseRetryAfterMs(result.response.headers);
-		const backoff =
-			retryAfterMs ?? Math.min(60_000, 1_000 * 2 ** (attempt - 1));
-		await delayMs(backoff + Math.floor(Math.random() * 250), signal);
-	}
-};
 
 const captureSetCookies = (response: Response, jar: CookieJar): void => {
 	const headers = response.headers as Headers & {
@@ -185,20 +137,40 @@ export class Session {
 		fallbackMessage = 'Trepa API error',
 		options?: { operation?: string },
 	): Promise<T> {
-		await this.ensureSession();
-		this.throwIfAborted();
-		let result = await fn();
+		const maxAttempts = DEFAULT_MAX_ATTEMPTS;
 
-		if (
-			(result.response.status === 401 || result.response.status === 403) &&
-			this.canRecoverAuth()
-		) {
-			await this.recoverAuth();
+		for (let attempt = 1; ; attempt++) {
+			await this.ensureSession();
 			this.throwIfAborted();
-			result = await fn();
-		}
+			let result = await fn();
 
-		if (result.error !== undefined || !result.response.ok) {
+			if (
+				(result.response.status === 401 || result.response.status === 403) &&
+				this.canRecoverAuth()
+			) {
+				await this.recoverAuth();
+				this.throwIfAborted();
+				result = await fn();
+			}
+
+			if (result.error === undefined && result.response.ok) {
+				return result.data as T;
+			}
+
+			if (
+				isTransientHttpStatus(result.response.status) &&
+				attempt < maxAttempts
+			) {
+				await delayMs(
+					backoffWithJitter(
+						attempt,
+						parseRetryAfterMs(result.response.headers),
+					),
+					this.requestAbort,
+				);
+				continue;
+			}
+
 			const resolved = await resolveErrorBody(result.response, result.error);
 			throw errorFromResponse(
 				result.response,
@@ -208,7 +180,6 @@ export class Session {
 				{ operation: options?.operation ?? fallbackMessage },
 			);
 		}
-		return result.data as T;
 	}
 
 	requirePrivateKey(operation: string): string {
@@ -222,10 +193,9 @@ export class Session {
 	}
 
 	async refresh(): Promise<void> {
-		const { error, response } = await fetchWithTransientRetry(
+		const { error, response } = await retryHttpAttempt(
 			() => this.client.POST('/auth/refresh'),
-			8,
-			this.requestAbort,
+			{ maxAttempts: DEFAULT_MAX_ATTEMPTS, signal: this.requestAbort },
 		);
 		if (response.ok) return;
 		const resolved = await resolveErrorBody(response, error);
@@ -292,13 +262,12 @@ export class Session {
 				code: 'missing_api_key',
 			});
 		}
-		const { error, response } = await fetchWithTransientRetry(
+		const { error, response } = await retryHttpAttempt(
 			() =>
 				this.client.POST('/auth/session', {
 					headers: { 'trepa-api-key': apiKey },
 				}),
-			8,
-			this.requestAbort,
+			{ maxAttempts: DEFAULT_MAX_ATTEMPTS, signal: this.requestAbort },
 		);
 		if (response.ok) return;
 		const resolved = await resolveErrorBody(response, error);

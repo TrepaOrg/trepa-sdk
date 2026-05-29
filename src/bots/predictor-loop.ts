@@ -12,6 +12,7 @@ import {
 	lineForReady,
 	lineForSkipped,
 } from './log-lines';
+import { fetchSharedPoolDetails } from './cache';
 import { snapOutcomeToPool } from './outcomes';
 import type {
 	BotContext,
@@ -115,7 +116,7 @@ const advance = async (state: BotState, ctx: MachineCtx): Promise<BotState> => {
 			return classify(ctx);
 
 		case 'no_open_pool':
-			await sleep(ctx.pollIntervalMs, ctx.signal);
+			await sleep(pollSleepMs(ctx), ctx.signal);
 			return { kind: 'polling' };
 
 		case 'skipping_in_flight_pool':
@@ -166,7 +167,7 @@ const advance = async (state: BotState, ctx: MachineCtx): Promise<BotState> => {
 				lineForError(ctx.options, state.err, ctx.publicCtx.slot),
 				ctx.publicCtx.slot,
 			);
-			await sleep(ctx.pollIntervalMs, ctx.signal);
+			await sleep(pollSleepMs(ctx), ctx.signal);
 			return { kind: 'polling' };
 
 		case 'stopped':
@@ -174,11 +175,25 @@ const advance = async (state: BotState, ctx: MachineCtx): Promise<BotState> => {
 	}
 };
 
+const pollSleepMs = (ctx: MachineCtx): number => {
+	const base = ctx.pollIntervalMs;
+	const { index, count } = ctx.publicCtx.slot;
+	if (count <= 1) return base;
+	const jitterSpan = Math.min(base * 0.25, 2_500);
+	return base + Math.floor((index / count) * jitterSpan);
+};
+
 const classify = async (ctx: MachineCtx): Promise<BotState> => {
 	let pool: OpenPool | null;
 	try {
 		pool =
-			(await ctx.client.streaks.poolDetails(ctx.streakId)).current_pool ?? null;
+			(
+				await fetchSharedPoolDetails(
+					ctx.client,
+					ctx.streakId,
+					ctx.pollIntervalMs,
+				)
+			).current_pool ?? null;
 	} catch (err) {
 		return { kind: 'recovering_from_error', err };
 	}
