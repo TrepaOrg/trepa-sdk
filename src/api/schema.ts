@@ -1390,26 +1390,6 @@ export interface components {
             notes?: string | null;
             user_id?: string | null;
         };
-        WaitlistReferralInsightsDto: {
-            waitlist_rank: number;
-            waitlist_total: number;
-            referral_count: number;
-            converted_user_count: number;
-        };
-        JoinWaitlistDto: {
-            email: string;
-            referral_token?: string;
-        };
-        WaitlistSignupDto: {
-            id: string;
-            /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            updated_at: string;
-            referrer_id?: string | null;
-            email: string;
-            referral_token: string;
-        };
     };
     responses: never;
     parameters: never;
@@ -1517,7 +1497,7 @@ export interface operations {
     UsersController_find: {
         parameters: {
             query?: {
-                includes?: ("invite" | "created_invites" | "avatar" | "pools" | "settings" | "notifications" | "device_tokens" | "refresh_tokens" | "predictions" | "api_keys" | "created_invites.invitees" | "predictions.reward")[];
+                includes?: ("invite" | "created_invites" | "avatar" | "pools" | "settings" | "notifications" | "device_tokens" | "refresh_tokens" | "predictions" | "api_keys" | "invite.creator" | "created_invites.invitees" | "predictions.reward")[];
             };
             header?: never;
             path: {
