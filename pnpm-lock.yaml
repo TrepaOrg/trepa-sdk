@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@solana-program/system':
-        specifier: 0.12.1
-        version: 0.12.1(@solana/kit@6.9.0(typescript@6.0.3))
+        specifier: 0.12.2
+        version: 0.12.2(@solana/kit@6.9.0(typescript@6.0.3))
       '@solana-program/token':
         specifier: 0.13.0
         version: 0.13.0(@solana/kit@6.9.0(typescript@6.0.3))
@@ -491,8 +491,8 @@ packages:
   '@rtsao/scc@1.1.0':
     resolution: {integrity: sha512-zt6OdqaDoOnJ1ZYsCYGt9YmWzDXl4vQdKTyJev62gFhRGKdx7mcT54V9KIjg+d2wi9EXsPvAPKe7i7WjfVWB8g==}
 
-  '@solana-program/system@0.12.1':
-    resolution: {integrity: sha512-atn3PTTu6bG1cOvDY50JPaysWFdpPu03U/tanS0ikpINqnBZL5wEQvep8mx4Qkt18XUUp8DXvPjnzmVULUWCwQ==}
+  '@solana-program/system@0.12.2':
+    resolution: {integrity: sha512-MaBeOxlvTruQhA7UYkOb3hVTEHPPagOtd+PvTm6a8rGgvEAP0kD4BbC37NceOaR4ABNqdaCmD5OMVRKgrE6KAg==}
     peerDependencies:
       '@solana/kit': ^6.4.0
 
@@ -2431,13 +2431,13 @@ snapshots:
 
   '@rtsao/scc@1.1.0': {}
 
-  '@solana-program/system@0.12.1(@solana/kit@6.9.0(typescript@6.0.3))':
+  '@solana-program/system@0.12.2(@solana/kit@6.9.0(typescript@6.0.3))':
     dependencies:
       '@solana/kit': 6.9.0(typescript@6.0.3)
 
   '@solana-program/token@0.13.0(@solana/kit@6.9.0(typescript@6.0.3))':
     dependencies:
-      '@solana-program/system': 0.12.1(@solana/kit@6.9.0(typescript@6.0.3))
+      '@solana-program/system': 0.12.2(@solana/kit@6.9.0(typescript@6.0.3))
       '@solana/kit': 6.9.0(typescript@6.0.3)
 
   '@solana/accounts@6.9.0(typescript@6.0.3)':
