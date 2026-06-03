@@ -42,11 +42,11 @@ importers:
         specifier: 6.9.0
         version: 6.9.0(typescript@6.0.3)
       ink:
-        specifier: 7.0.4
-        version: 7.0.4(@types/react@19.2.15)(react@19.2.6)
+        specifier: 7.0.5
+        version: 7.0.5(@types/react@19.2.15)(react@19.2.6)
       ink-spinner:
         specifier: 5.0.0
-        version: 5.0.0(ink@7.0.4(@types/react@19.2.15)(react@19.2.6))(react@19.2.6)
+        version: 5.0.0(ink@7.0.5(@types/react@19.2.15)(react@19.2.6))(react@19.2.6)
       openapi-fetch:
         specifier: 0.17.0
         version: 0.17.0
@@ -1473,8 +1473,8 @@ packages:
       ink: '>=4.0.0'
       react: '>=18.0.0'
 
-  ink@7.0.4:
-    resolution: {integrity: sha512-4wsM/gMKOT2ZANNTJibI6I9IcwBfobqv/CgaDcwvOaCREZIQxo3iGQS7qPHa2hmA67NYltZWCMtBDELB/mcbJQ==}
+  ink@7.0.5:
+    resolution: {integrity: sha512-zWNjGHQPxSeiSAmDUOq+QPQ6CfmMhmNi85vrJIuy4prafKKUSoZlXEy4wbM7LuLuF1pDURk7qvF4fxrQlLxv3w==}
     engines: {node: '>=22'}
     peerDependencies:
       '@types/react': '>=19.2.0'
@@ -3616,13 +3616,13 @@ snapshots:
 
   index-to-position@1.2.0: {}
 
-  ink-spinner@5.0.0(ink@7.0.4(@types/react@19.2.15)(react@19.2.6))(react@19.2.6):
+  ink-spinner@5.0.0(ink@7.0.5(@types/react@19.2.15)(react@19.2.6))(react@19.2.6):
     dependencies:
       cli-spinners: 2.9.2
-      ink: 7.0.4(@types/react@19.2.15)(react@19.2.6)
+      ink: 7.0.5(@types/react@19.2.15)(react@19.2.6)
       react: 19.2.6
 
-  ink@7.0.4(@types/react@19.2.15)(react@19.2.6):
+  ink@7.0.5(@types/react@19.2.15)(react@19.2.6):
     dependencies:
       '@alcalzone/ansi-tokenize': 0.3.0
       ansi-escapes: 7.3.0
