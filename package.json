@@ -72,12 +72,12 @@
     "ink": "7.0.5",
     "ink-spinner": "5.0.0",
     "openapi-fetch": "0.17.0",
-    "react": "19.2.6"
+    "react": "19.2.7"
   },
   "devDependencies": {
     "@eslint/compat": "2.1.0",
     "@types/node": "22.19.18",
-    "@types/react": "19.2.15",
+    "@types/react": "19.2.16",
     "@typescript-eslint/eslint-plugin": "8.60.0",
     "@typescript-eslint/parser": "8.60.0",
     "eslint": "10.4.1",
