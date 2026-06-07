@@ -1,5 +1,4 @@
 import { type Address } from '@solana/addresses';
-import type { Signature } from '@solana/keys';
 import {
 	type Instruction,
 	type KeyPairSigner,
@@ -520,26 +519,105 @@ async function syncAllBotsBundled(
 	const plansWithWork = plans.filter((p) => p.instructions.length > 0);
 	if (plansWithWork.length === 0) return;
 
-	const { value: latestBlockhash } = await ctx.rpc.getLatestBlockhash().send();
-	const signatures: Signature[] = [];
-	for (let i = 0; i < plansWithWork.length; i += maxBotsPerTransaction) {
-		const chunk = plansWithWork.slice(i, i + maxBotsPerTransaction);
-		const signed = await signFundingTransaction(
-			ctx,
-			flattenPlanInstructions(chunk),
-			latestBlockhash,
-		);
-		const signature = await ctx.txKit.sendTransaction(signed, {
-			commitment: 'confirmed',
-			skipPreflight: true,
-		});
-		signatures.push(signature);
-		logPlanBatchOutcomes(chunk);
+	const chunks = chunkBotSyncPlans(plansWithWork, maxBotsPerTransaction);
+	await sendBotSyncPlanChunks(ctx, chunks, masterSolSpendBudget);
+}
+
+/** Sweeps need bot signatures; bundling them with top-ups fails the whole tx atomically. */
+function planRequiresBotSignature(plan: BotSyncPlan): boolean {
+	return plan.movements.some((m) => m.startsWith('-'));
+}
+
+function chunkBotSyncPlans(
+	plans: readonly BotSyncPlan[],
+	maxBotsPerTransaction: number,
+): BotSyncPlan[][] {
+	const fills = plans.filter((p) => !planRequiresBotSignature(p));
+	const sweeps = plans.filter((p) => planRequiresBotSignature(p));
+	const chunks: BotSyncPlan[][] = [];
+
+	for (let i = 0; i < fills.length; i += maxBotsPerTransaction) {
+		chunks.push([...fills.slice(i, i + maxBotsPerTransaction)]);
 	}
-	await ctx.txKit.confirmSignatures(signatures, {
-		commitment: 'confirmed',
-		lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+	for (const sweep of sweeps) {
+		chunks.push([sweep]);
+	}
+
+	return chunks;
+}
+
+async function refreshBotSyncPlan(
+	ctx: FunderCtx,
+	bot: BotWallet,
+	masterSolSpendBudget: { value: bigint },
+): Promise<BotSyncPlan | null> {
+	const batch = await fetchFunderBalancesBatch({
+		rpc: ctx.rpc,
+		mint: ctx.mint,
+		botAddresses: [bot.address],
 	});
+	const row = batch.bots[0];
+	if (!row) return null;
+
+	const snap = snapshotFromBalances(
+		ctx,
+		bot,
+		row.botAta,
+		row.solLamports,
+		row.tokenAmount,
+		row.tokenAccountExists,
+	);
+	if (snap === null) return null;
+
+	const plan = await buildBotSyncPlan(ctx, snap, masterSolSpendBudget);
+	return plan.instructions.length > 0 ? plan : null;
+}
+
+async function sendBotSyncPlanChunks(
+	ctx: FunderCtx,
+	chunks: readonly (readonly BotSyncPlan[])[],
+	masterSolSpendBudget: { value: bigint },
+): Promise<void> {
+	for (const chunk of chunks) {
+		const plans =
+			chunk.length === 1 && planRequiresBotSignature(chunk[0]!)
+				? await (async () => {
+						const refreshed = await refreshBotSyncPlan(
+							ctx,
+							chunk[0]!.bot,
+							masterSolSpendBudget,
+						);
+						return refreshed ? [refreshed] : [];
+					})()
+				: [...chunk];
+
+		if (plans.length === 0) continue;
+
+		const labels = plans.map((p) => p.bot.label).join(', ');
+		try {
+			const { value: latestBlockhash } = await ctx.rpc
+				.getLatestBlockhash()
+				.send();
+			const signed = await signFundingTransaction(
+				ctx,
+				flattenPlanInstructions(plans),
+				latestBlockhash,
+			);
+			const signature = await ctx.txKit.sendTransaction(signed, {
+				commitment: 'confirmed',
+				skipPreflight: true,
+			});
+			await ctx.txKit.confirmSignatures([signature], {
+				commitment: 'confirmed',
+				lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+			});
+			logPlanBatchOutcomes(plans);
+		} catch (err) {
+			trepaLog.error(
+				`fund tx failed for ${labels} — ${describeChainedError(err)}`,
+			);
+		}
+	}
 }
 
 function flattenPlanInstructions(plans: readonly BotSyncPlan[]): Instruction[] {
