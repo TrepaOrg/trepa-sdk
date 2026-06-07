@@ -59,6 +59,29 @@ export async function confirmSignaturesAtCommitment(
 			.getEpochInfo({ commitment: config.commitment })
 			.send({ abortSignal: config.abortSignal });
 		if (epoch.blockHeight > config.lastValidBlockHeight) {
+			// The blockhash window closed; the tx may still have landed — recheck once.
+			const { value: finalStatuses } = await rpc
+				.getSignatureStatuses(ordered)
+				.send({ abortSignal: config.abortSignal });
+			for (let i = 0; i < ordered.length; i++) {
+				const signature = ordered[i]!;
+				const status = finalStatuses[i];
+				if (status?.err) {
+					throw new Error(
+						`transaction ${signature} failed: ${JSON.stringify(status.err)}`,
+					);
+				}
+				if (
+					status?.confirmationStatus &&
+					commitmentComparator(status.confirmationStatus, config.commitment) >=
+						0
+				) {
+					pending.delete(signature);
+				}
+			}
+			if (pending.size === 0) {
+				return;
+			}
 			throw new Error(
 				`block height ${epoch.blockHeight} exceeded last valid ` +
 					`${config.lastValidBlockHeight} before all signatures confirmed`,

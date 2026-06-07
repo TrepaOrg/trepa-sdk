@@ -60,6 +60,7 @@ const BALANCE_MANAGER_MASTER_SOL_RESERVE_SOL = 0.05;
 const BALANCE_MANAGER_MAX_BOTS_PER_TX = 5;
 const BALANCE_MANAGER_FUND_INTERVAL_MS = 60_000;
 const BALANCE_MANAGER_SHUTDOWN_WAIT_MS = 15_000;
+const BALANCE_MANAGER_FUND_TX_MAX_ATTEMPTS = 3;
 
 interface BotWallet {
 	address: Address;
@@ -573,49 +574,78 @@ async function refreshBotSyncPlan(
 	return plan.instructions.length > 0 ? plan : null;
 }
 
+async function resolveChunkPlans(
+	ctx: FunderCtx,
+	chunk: readonly BotSyncPlan[],
+	masterSolSpendBudget: { value: bigint },
+): Promise<BotSyncPlan[]> {
+	if (chunk.length === 1 && planRequiresBotSignature(chunk[0]!)) {
+		const refreshed = await refreshBotSyncPlan(
+			ctx,
+			chunk[0]!.bot,
+			masterSolSpendBudget,
+		);
+		return refreshed ? [refreshed] : [];
+	}
+	return [...chunk];
+}
+
+function isRetryableFundTxError(err: unknown): boolean {
+	const msg = describeChainedError(err).toLowerCase();
+	return (
+		msg.includes('exceeded last valid') ||
+		msg.includes('blockhash not found') ||
+		msg.includes('transaction expired')
+	);
+}
+
 async function sendBotSyncPlanChunks(
 	ctx: FunderCtx,
 	chunks: readonly (readonly BotSyncPlan[])[],
 	masterSolSpendBudget: { value: bigint },
 ): Promise<void> {
 	for (const chunk of chunks) {
-		const plans =
-			chunk.length === 1 && planRequiresBotSignature(chunk[0]!)
-				? await (async () => {
-						const refreshed = await refreshBotSyncPlan(
-							ctx,
-							chunk[0]!.bot,
-							masterSolSpendBudget,
-						);
-						return refreshed ? [refreshed] : [];
-					})()
-				: [...chunk];
+		const labels = chunk.map((p) => p.bot.label).join(', ');
 
-		if (plans.length === 0) continue;
+		for (
+			let attempt = 1;
+			attempt <= BALANCE_MANAGER_FUND_TX_MAX_ATTEMPTS;
+			attempt++
+		) {
+			const plans = await resolveChunkPlans(ctx, chunk, masterSolSpendBudget);
+			if (plans.length === 0) break;
 
-		const labels = plans.map((p) => p.bot.label).join(', ');
-		try {
-			const { value: latestBlockhash } = await ctx.rpc
-				.getLatestBlockhash()
-				.send();
-			const signed = await signFundingTransaction(
-				ctx,
-				flattenPlanInstructions(plans),
-				latestBlockhash,
-			);
-			const signature = await ctx.txKit.sendTransaction(signed, {
-				commitment: 'confirmed',
-				skipPreflight: true,
-			});
-			await ctx.txKit.confirmSignatures([signature], {
-				commitment: 'confirmed',
-				lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
-			});
-			logPlanBatchOutcomes(plans);
-		} catch (err) {
-			trepaLog.error(
-				`fund tx failed for ${labels} — ${describeChainedError(err)}`,
-			);
+			try {
+				const { value: latestBlockhash } = await ctx.rpc
+					.getLatestBlockhash()
+					.send();
+				const signed = await signFundingTransaction(
+					ctx,
+					flattenPlanInstructions(plans),
+					latestBlockhash,
+				);
+				await ctx.txKit.sendAndConfirm(signed, {
+					commitment: 'confirmed',
+					skipPreflight: true,
+				});
+				logPlanBatchOutcomes(plans);
+				break;
+			} catch (err) {
+				const retryable = isRetryableFundTxError(err);
+				const hasAttemptsLeft =
+					attempt < BALANCE_MANAGER_FUND_TX_MAX_ATTEMPTS;
+				if (retryable && hasAttemptsLeft) {
+					trepaLog.warn(
+						`fund tx for ${labels} expired before confirm ` +
+							`(attempt ${attempt}/${BALANCE_MANAGER_FUND_TX_MAX_ATTEMPTS}) — retrying`,
+					);
+					continue;
+				}
+				trepaLog.error(
+					`fund tx failed for ${labels} — ${describeChainedError(err)}`,
+				);
+				break;
+			}
 		}
 	}
 }
