@@ -59,11 +59,13 @@ export type {
 } from './balance-manager-config';
 
 const BALANCE_MANAGER_MASTER_SOL_RESERVE_SOL = 0.05;
-/** One bot per funding tx — avoids blockhash expiry from bundled confirms. */
 const BALANCE_MANAGER_MAX_BOTS_PER_TX = 1;
 const BALANCE_MANAGER_FUND_INTERVAL_MS = 60_000;
 const BALANCE_MANAGER_SHUTDOWN_WAIT_MS = 15_000;
-const BALANCE_MANAGER_FUND_TX_MAX_ATTEMPTS = 5;
+const BALANCE_MANAGER_FUND_TX_MAX_ATTEMPTS = 3;
+const BALANCE_MANAGER_FUND_TX_POLL_MS = 250;
+const BALANCE_MANAGER_FUND_TX_WAIT_MS = 12_000;
+const BALANCE_MANAGER_FUND_TX_POST_EXPIRY_GRACE_MS = 20_000;
 
 interface BotWallet {
 	address: Address;
@@ -553,34 +555,63 @@ async function refreshBotSyncPlan(
 	return plan.instructions.length > 0 ? plan : null;
 }
 
-function isRetryableFundTxError(err: unknown): boolean {
+type FundingTxOutcome = 'confirmed' | 'pending' | 'failed';
+
+function isOnChainFundFailure(err: unknown): boolean {
 	const msg = describeChainedError(err).toLowerCase();
-	return (
-		msg.includes('exceeded last valid') ||
-		msg.includes('progressed past') ||
-		msg.includes('last block for which') ||
-		msg.includes('blockhash not found') ||
-		msg.includes('blockhash expired') ||
-		msg.includes('transaction expired')
-	);
+	return msg.includes('failed on-chain') || msg.includes('failed:');
 }
 
-async function fundingTxSettled(
+async function getFundingTxOutcome(
 	rpc: FunderCtx['rpc'],
 	signature: Signature,
-): Promise<boolean> {
+): Promise<FundingTxOutcome> {
 	const { value: statuses } = await rpc.getSignatureStatuses([signature]).send();
 	const status = statuses[0];
-	if (!status || status.err) return false;
+	if (!status) return 'pending';
+	if (status.err) return 'failed';
 	const confirmation = status.confirmationStatus;
-	if (confirmation === null || confirmation === undefined) return false;
-	return commitmentComparator(confirmation, 'confirmed') >= 0;
+	if (confirmation === null || confirmation === undefined) return 'pending';
+	if (commitmentComparator(confirmation, 'processed') >= 0) return 'confirmed';
+	return 'pending';
+}
+
+async function waitForFundingSignature(
+	rpc: FunderCtx['rpc'],
+	signature: Signature,
+	lastValidBlockHeight: bigint,
+): Promise<FundingTxOutcome> {
+	const deadline = Date.now() + BALANCE_MANAGER_FUND_TX_WAIT_MS;
+	let expirySeenAt: number | null = null;
+
+	while (Date.now() < deadline) {
+		const outcome = await getFundingTxOutcome(rpc, signature);
+		if (outcome !== 'pending') return outcome;
+
+		const epoch = await rpc.getEpochInfo({ commitment: 'processed' }).send();
+		if (epoch.blockHeight > lastValidBlockHeight) {
+			expirySeenAt ??= Date.now();
+			if (
+				Date.now() - expirySeenAt >=
+				BALANCE_MANAGER_FUND_TX_POST_EXPIRY_GRACE_MS
+			) {
+				break;
+			}
+		} else {
+			expirySeenAt = null;
+		}
+
+		await sleepMs(BALANCE_MANAGER_FUND_TX_POLL_MS);
+	}
+
+	const finalOutcome = await getFundingTxOutcome(rpc, signature);
+	return finalOutcome === 'pending' ? 'pending' : finalOutcome;
 }
 
 async function sendFundingPlan(
 	ctx: FunderCtx,
 	plan: BotSyncPlan,
-): Promise<void> {
+): Promise<{ outcome: FundingTxOutcome; signature: Signature }> {
 	const { value: latestBlockhash } = await ctx.rpc.getLatestBlockhash().send();
 	const signed = await signFundingTransaction(
 		ctx,
@@ -588,18 +619,32 @@ async function sendFundingPlan(
 		latestBlockhash,
 	);
 	const signature = await ctx.txKit.sendTransaction(signed, {
-		commitment: 'confirmed',
-		skipPreflight: true,
+		commitment: 'processed',
+		skipPreflight: false,
 	});
-	try {
-		await ctx.txKit.confirmSignatures([signature], {
-			commitment: 'confirmed',
-			lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
-		});
-	} catch (confirmErr) {
-		if (await fundingTxSettled(ctx.rpc, signature)) return;
-		throw confirmErr;
-	}
+	const outcome = await waitForFundingSignature(
+		ctx.rpc,
+		signature,
+		latestBlockhash.lastValidBlockHeight,
+	);
+	return { outcome, signature };
+}
+
+function logFundPlanOutcome(plan: BotSyncPlan): void {
+	if (plan.movements.length === 0) return;
+	writeEvent('fund', `${plan.bot.label}: ${plan.movements.join(', ')}`, {
+		index: plan.bot.slotIndex,
+		count: Math.max(1, plan.bot.swarmCount),
+	});
+}
+
+async function botFundingStillNeeded(
+	ctx: FunderCtx,
+	bot: BotWallet,
+	masterSolSpendBudget: { value: bigint },
+): Promise<boolean> {
+	const fresh = await refreshBotSyncPlan(ctx, bot, masterSolSpendBudget);
+	return fresh !== null;
 }
 
 async function sendBotSyncPlan(
@@ -622,30 +667,44 @@ async function sendBotSyncPlan(
 		if (fresh === null) return;
 
 		try {
-			await sendFundingPlan(ctx, fresh);
-			if (fresh.movements.length > 0) {
-				writeEvent('fund', `${fresh.bot.label}: ${fresh.movements.join(', ')}`, {
-					index: fresh.bot.slotIndex,
-					count: Math.max(1, fresh.bot.swarmCount),
-				});
+			const { outcome, signature } = await sendFundingPlan(ctx, fresh);
+			if (outcome === 'confirmed') {
+				logFundPlanOutcome(fresh);
+				return;
 			}
-			return;
+			if (outcome === 'pending') {
+				trepaLog.info(
+					`${label}: fund tx ${signature} submitted — pending confirm`,
+				);
+				return;
+			}
+			throw new Error(`transaction ${signature} failed on-chain`);
 		} catch (err) {
-			const retryable = isRetryableFundTxError(err);
+			if (!(await botFundingStillNeeded(ctx, plan.bot, masterSolSpendBudget))) {
+				return;
+			}
+
 			const hasAttemptsLeft = attempt < BALANCE_MANAGER_FUND_TX_MAX_ATTEMPTS;
-			if (retryable && hasAttemptsLeft) {
+			if (isOnChainFundFailure(err) && hasAttemptsLeft) {
 				trepaLog.warn(
-					`fund tx for ${label} expired before confirm ` +
+					`fund tx for ${label} failed on-chain ` +
 						`(attempt ${attempt}/${BALANCE_MANAGER_FUND_TX_MAX_ATTEMPTS}) — retrying`,
 				);
 				continue;
 			}
+
 			trepaLog.error(
 				`fund tx failed for ${label} — ${describeChainedError(err)}`,
 			);
 			return;
 		}
 	}
+}
+
+function sleepMs(ms: number): Promise<void> {
+	return new Promise((resolve) => {
+		setTimeout(resolve, ms);
+	});
 }
 
 async function signFundingTransaction(
