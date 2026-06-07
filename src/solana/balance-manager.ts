@@ -1,4 +1,6 @@
 import { type Address } from '@solana/addresses';
+import type { Signature } from '@solana/keys';
+import { commitmentComparator } from '@solana/rpc-types';
 import {
 	type Instruction,
 	type KeyPairSigner,
@@ -57,10 +59,11 @@ export type {
 } from './balance-manager-config';
 
 const BALANCE_MANAGER_MASTER_SOL_RESERVE_SOL = 0.05;
-const BALANCE_MANAGER_MAX_BOTS_PER_TX = 5;
+/** One bot per funding tx — avoids blockhash expiry from bundled confirms. */
+const BALANCE_MANAGER_MAX_BOTS_PER_TX = 1;
 const BALANCE_MANAGER_FUND_INTERVAL_MS = 60_000;
 const BALANCE_MANAGER_SHUTDOWN_WAIT_MS = 15_000;
-const BALANCE_MANAGER_FUND_TX_MAX_ATTEMPTS = 3;
+const BALANCE_MANAGER_FUND_TX_MAX_ATTEMPTS = 5;
 
 interface BotWallet {
 	address: Address;
@@ -213,8 +216,7 @@ async function runFunderLoop(
 	);
 	writeSwarmMetaLine(
 		`We never spend the last ${policy.masterSolReserve} SOL on the master ` +
-			`(that stays for fees). Up to ${policy.maxBotsPerTransaction} bot` +
-			`${policy.maxBotsPerTransaction === 1 ? '' : 's'} funded in one transaction.`,
+			'(that stays for fees). Each bot is funded in its own transaction.',
 	);
 	writeSwarmMetaLine(
 		`When a bot is above those targets, surplus USDC and SOL are swept back ` +
@@ -224,7 +226,7 @@ async function runFunderLoop(
 	while (!signal.aborted) {
 		if (signal.aborted) return;
 		try {
-			await syncAllBotsBundled(ctx, bots, policy.maxBotsPerTransaction);
+			await syncAllBotsBundled(ctx, bots);
 		} catch (err) {
 			trepaLog.error(`bundled sync failed — ${describeChainedError(err)}`);
 		}
@@ -471,7 +473,6 @@ async function buildBotSyncPlan(
 async function syncAllBotsBundled(
 	ctx: FunderCtx,
 	bots: readonly BotWallet[],
-	maxBotsPerTransaction: number,
 ): Promise<void> {
 	const botByAddress = new Map(bots.map((b) => [b.address, b]));
 	const batch = await fetchFunderBalancesBatch({
@@ -520,31 +521,9 @@ async function syncAllBotsBundled(
 	const plansWithWork = plans.filter((p) => p.instructions.length > 0);
 	if (plansWithWork.length === 0) return;
 
-	const chunks = chunkBotSyncPlans(plansWithWork, maxBotsPerTransaction);
-	await sendBotSyncPlanChunks(ctx, chunks, masterSolSpendBudget);
-}
-
-/** Sweeps need bot signatures; bundling them with top-ups fails the whole tx atomically. */
-function planRequiresBotSignature(plan: BotSyncPlan): boolean {
-	return plan.movements.some((m) => m.startsWith('-'));
-}
-
-function chunkBotSyncPlans(
-	plans: readonly BotSyncPlan[],
-	maxBotsPerTransaction: number,
-): BotSyncPlan[][] {
-	const fills = plans.filter((p) => !planRequiresBotSignature(p));
-	const sweeps = plans.filter((p) => planRequiresBotSignature(p));
-	const chunks: BotSyncPlan[][] = [];
-
-	for (let i = 0; i < fills.length; i += maxBotsPerTransaction) {
-		chunks.push([...fills.slice(i, i + maxBotsPerTransaction)]);
+	for (const plan of plansWithWork) {
+		await sendBotSyncPlan(ctx, plan, masterSolSpendBudget);
 	}
-	for (const sweep of sweeps) {
-		chunks.push([sweep]);
-	}
-
-	return chunks;
 }
 
 async function refreshBotSyncPlan(
@@ -574,93 +553,97 @@ async function refreshBotSyncPlan(
 	return plan.instructions.length > 0 ? plan : null;
 }
 
-async function resolveChunkPlans(
-	ctx: FunderCtx,
-	chunk: readonly BotSyncPlan[],
-	masterSolSpendBudget: { value: bigint },
-): Promise<BotSyncPlan[]> {
-	if (chunk.length === 1 && planRequiresBotSignature(chunk[0]!)) {
-		const refreshed = await refreshBotSyncPlan(
-			ctx,
-			chunk[0]!.bot,
-			masterSolSpendBudget,
-		);
-		return refreshed ? [refreshed] : [];
-	}
-	return [...chunk];
-}
-
 function isRetryableFundTxError(err: unknown): boolean {
 	const msg = describeChainedError(err).toLowerCase();
 	return (
 		msg.includes('exceeded last valid') ||
+		msg.includes('progressed past') ||
+		msg.includes('last block for which') ||
 		msg.includes('blockhash not found') ||
+		msg.includes('blockhash expired') ||
 		msg.includes('transaction expired')
 	);
 }
 
-async function sendBotSyncPlanChunks(
+async function fundingTxSettled(
+	rpc: FunderCtx['rpc'],
+	signature: Signature,
+): Promise<boolean> {
+	const { value: statuses } = await rpc.getSignatureStatuses([signature]).send();
+	const status = statuses[0];
+	if (!status || status.err) return false;
+	const confirmation = status.confirmationStatus;
+	if (confirmation === null || confirmation === undefined) return false;
+	return commitmentComparator(confirmation, 'confirmed') >= 0;
+}
+
+async function sendFundingPlan(
 	ctx: FunderCtx,
-	chunks: readonly (readonly BotSyncPlan[])[],
-	masterSolSpendBudget: { value: bigint },
+	plan: BotSyncPlan,
 ): Promise<void> {
-	for (const chunk of chunks) {
-		const labels = chunk.map((p) => p.bot.label).join(', ');
-
-		for (
-			let attempt = 1;
-			attempt <= BALANCE_MANAGER_FUND_TX_MAX_ATTEMPTS;
-			attempt++
-		) {
-			const plans = await resolveChunkPlans(ctx, chunk, masterSolSpendBudget);
-			if (plans.length === 0) break;
-
-			try {
-				const { value: latestBlockhash } = await ctx.rpc
-					.getLatestBlockhash()
-					.send();
-				const signed = await signFundingTransaction(
-					ctx,
-					flattenPlanInstructions(plans),
-					latestBlockhash,
-				);
-				await ctx.txKit.sendAndConfirm(signed, {
-					commitment: 'confirmed',
-					skipPreflight: true,
-				});
-				logPlanBatchOutcomes(plans);
-				break;
-			} catch (err) {
-				const retryable = isRetryableFundTxError(err);
-				const hasAttemptsLeft =
-					attempt < BALANCE_MANAGER_FUND_TX_MAX_ATTEMPTS;
-				if (retryable && hasAttemptsLeft) {
-					trepaLog.warn(
-						`fund tx for ${labels} expired before confirm ` +
-							`(attempt ${attempt}/${BALANCE_MANAGER_FUND_TX_MAX_ATTEMPTS}) — retrying`,
-					);
-					continue;
-				}
-				trepaLog.error(
-					`fund tx failed for ${labels} — ${describeChainedError(err)}`,
-				);
-				break;
-			}
-		}
+	const { value: latestBlockhash } = await ctx.rpc.getLatestBlockhash().send();
+	const signed = await signFundingTransaction(
+		ctx,
+		plan.instructions,
+		latestBlockhash,
+	);
+	const signature = await ctx.txKit.sendTransaction(signed, {
+		commitment: 'confirmed',
+		skipPreflight: true,
+	});
+	try {
+		await ctx.txKit.confirmSignatures([signature], {
+			commitment: 'confirmed',
+			lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+		});
+	} catch (confirmErr) {
+		if (await fundingTxSettled(ctx.rpc, signature)) return;
+		throw confirmErr;
 	}
 }
 
-function flattenPlanInstructions(plans: readonly BotSyncPlan[]): Instruction[] {
-	return plans.flatMap((p) => p.instructions);
-}
+async function sendBotSyncPlan(
+	ctx: FunderCtx,
+	plan: BotSyncPlan,
+	masterSolSpendBudget: { value: bigint },
+): Promise<void> {
+	const label = plan.bot.label;
 
-function logPlanBatchOutcomes(plans: readonly BotSyncPlan[]): void {
-	for (const p of plans) {
-		if (p.movements.length > 0) {
-			writeEvent('fund', `${p.bot.label}: ${p.movements.join(', ')}`, {
-				index: p.bot.slotIndex,
-				count: Math.max(1, p.bot.swarmCount),
-			});
+	for (
+		let attempt = 1;
+		attempt <= BALANCE_MANAGER_FUND_TX_MAX_ATTEMPTS;
+		attempt++
+	) {
+		const fresh = await refreshBotSyncPlan(
+			ctx,
+			plan.bot,
+			masterSolSpendBudget,
+		);
+		if (fresh === null) return;
+
+		try {
+			await sendFundingPlan(ctx, fresh);
+			if (fresh.movements.length > 0) {
+				writeEvent('fund', `${fresh.bot.label}: ${fresh.movements.join(', ')}`, {
+					index: fresh.bot.slotIndex,
+					count: Math.max(1, fresh.bot.swarmCount),
+				});
+			}
+			return;
+		} catch (err) {
+			const retryable = isRetryableFundTxError(err);
+			const hasAttemptsLeft = attempt < BALANCE_MANAGER_FUND_TX_MAX_ATTEMPTS;
+			if (retryable && hasAttemptsLeft) {
+				trepaLog.warn(
+					`fund tx for ${label} expired before confirm ` +
+						`(attempt ${attempt}/${BALANCE_MANAGER_FUND_TX_MAX_ATTEMPTS}) — retrying`,
+				);
+				continue;
+			}
+			trepaLog.error(
+				`fund tx failed for ${label} — ${describeChainedError(err)}`,
+			);
+			return;
 		}
 	}
 }
