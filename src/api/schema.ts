@@ -1088,7 +1088,9 @@ export interface components {
         MechanismRewardDto: {
             address: string;
             value: number;
+            stake: number;
             return: number;
+            roi: number;
             precision_score: number;
             error: number;
         };
