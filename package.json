@@ -50,7 +50,7 @@
   "pnpm": {
     "minimumReleaseAge": 1440,
     "overrides": {
-      "esbuild": ">=0.28.1"
+      "esbuild": "0.28.1"
     }
   },
   "scripts": {
