@@ -144,6 +144,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/users/{id}/referral-revenue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get referral revenue
+         * @description Returns paginated monthly referral revenue from level 1 and level 2 volume, with all-time totals.
+         */
+        get: operations["UsersController_getReferralRevenue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users/{id}/portfolio": {
         parameters: {
             query?: never;
@@ -598,7 +618,6 @@ export interface components {
             updated_at: string;
             /** Format: date-time */
             last_seen_at: string;
-            invite_id?: string | null;
             avatar_id?: string | null;
             username: string;
             twitter_username?: string | null;
@@ -614,7 +633,6 @@ export interface components {
             updated_at: string;
             /** Format: date-time */
             last_seen_at: string;
-            invite_id?: string | null;
             avatar_id?: string | null;
             email?: string;
             username: string;
@@ -623,18 +641,39 @@ export interface components {
             role: components["schemas"]["UserRole"];
             wallet_address: string;
         };
-        InviteWithRelationsDto: {
+        ReferralRedemptionDto: {
+            id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            referral_code_id: string;
+            /** Format: date-time */
+            applied_at: string;
+        };
+        ReferralCodeWithRelationsDto: {
             id: string;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
             updated_at: string;
             code: string;
-            max_uses: number;
             notes?: string | null;
             user_id?: string | null;
             creator?: components["schemas"]["UserDto"];
-            invitees?: components["schemas"]["UserDto"][];
+            redemptions?: components["schemas"]["ReferralRedemptionDto"][];
+        };
+        ReferralRedemptionWithRelationsDto: {
+            id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            referral_code_id: string;
+            /** Format: date-time */
+            applied_at: string;
+            referral_code?: components["schemas"]["ReferralCodeWithRelationsDto"];
+            user?: components["schemas"]["UserDto"];
         };
         FileDto: {
             id: string;
@@ -757,7 +796,6 @@ export interface components {
             updated_at: string;
             /** Format: date-time */
             last_seen_at: string;
-            invite_id?: string | null;
             avatar_id?: string | null;
             email?: string;
             username: string;
@@ -765,8 +803,8 @@ export interface components {
             has_seen_tour: boolean;
             role: components["schemas"]["UserRole"];
             wallet_address: string;
-            invite?: components["schemas"]["InviteWithRelationsDto"];
-            created_invites?: components["schemas"]["InviteWithRelationsDto"][];
+            referral_redemption?: components["schemas"]["ReferralRedemptionWithRelationsDto"];
+            created_referral_codes?: components["schemas"]["ReferralCodeWithRelationsDto"][];
             avatar?: components["schemas"]["FileDto"];
             pools?: components["schemas"]["PoolWithRelationsDto"][];
             settings?: components["schemas"]["SettingsWithRelationsDto"];
@@ -927,7 +965,17 @@ export interface components {
             username?: string;
             has_seen_tour?: boolean;
         };
-        ValidateInviteDto: {
+        ReferralCodeDto: {
+            id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            code: string;
+            notes?: string | null;
+            user_id?: string | null;
+        };
+        ValidateReferralDto: {
             code: string;
         };
         SettingsDto: {
@@ -960,7 +1008,6 @@ export interface components {
             precision_rank: number;
         };
         UserStatisticsDto: {
-            pnl: number;
             volume: number;
             wins: number;
             losses: number;
@@ -969,6 +1016,71 @@ export interface components {
             days_active: number;
             /** Format: date-time */
             date_joined: string;
+        };
+        ReferralRevenueDto: {
+            user_id: string;
+            /** Format: date-time */
+            period_start: string;
+            /** Format: date-time */
+            period_end: string;
+            level_1_referred_users_added: number;
+            level_2_referred_users_added: number;
+            referred_users_added: number;
+            level_1_referred_volume: number;
+            level_2_referred_volume: number;
+            referred_user_volume: number;
+            /**
+             * @description Referral revenue tier for the period.
+             * @enum {string}
+             */
+            revenue_tier: "BRONZE" | "SILVER" | "GOLD" | "PLATINUM";
+            /** @description Level 1 revenue rate for the period. */
+            level_1_revenue_rate: number;
+            /** @description Level 2 revenue rate for the period. */
+            level_2_revenue_rate: number;
+            /** @description Eligible revenue for the period. */
+            eligible_payout: number;
+        };
+        ReferralRevenueRateDto: {
+            id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: date-time */
+            effective_from: string;
+            bronze_min_network_volume: number;
+            silver_min_network_volume: number;
+            gold_min_network_volume: number;
+            platinum_min_network_volume: number;
+            bronze_level_1_revenue_rate: number;
+            bronze_level_2_revenue_rate: number;
+            silver_level_1_revenue_rate: number;
+            silver_level_2_revenue_rate: number;
+            gold_level_1_revenue_rate: number;
+            gold_level_2_revenue_rate: number;
+            platinum_level_1_revenue_rate: number;
+            platinum_level_2_revenue_rate: number;
+        };
+        ReferralRevenueResponseDto: {
+            periods: components["schemas"]["ReferralRevenueDto"][];
+            all_time_referred_user_count: number;
+            all_time_level_1_referred_user_count: number;
+            all_time_level_2_referred_user_count: number;
+            all_time_referred_user_volume: number;
+            all_time_eligible_payout: number;
+            all_time_level_1_eligible_payout: number;
+            all_time_level_2_eligible_payout: number;
+            all_time_level_1_referred_volume: number;
+            all_time_level_2_referred_volume: number;
+            /** @enum {string} */
+            revenue_tier: "BRONZE" | "SILVER" | "GOLD" | "PLATINUM";
+            /** @enum {string} */
+            current_period_revenue_tier: "BRONZE" | "SILVER" | "GOLD" | "PLATINUM";
+            all_time_network_volume: number;
+            level_1_revenue_rate: number;
+            level_2_revenue_rate: number;
+            tier_program?: components["schemas"]["ReferralRevenueRateDto"] | null;
         };
         PortfolioDto: {
             staked_amount: number;
@@ -1368,29 +1480,21 @@ export interface components {
         DominoUserDepositsResponseDto: {
             total_deposited: number;
         };
-        CreateInviteCodesDto: {
-            /**
-             * @description Number of invite codes to generate.
-             * @default 1
-             */
-            amount: number;
-            /**
-             * @description Maximum number of times each invite code can be redeemed.
-             * @default 1
-             */
-            max_uses: number;
-            notes?: string;
-        };
-        InviteDto: {
-            id: string;
+        CreateReferralRevenueRateDto: {
             /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            updated_at: string;
-            code: string;
-            max_uses: number;
-            notes?: string | null;
-            user_id?: string | null;
+            effective_from: string;
+            bronze_min_network_volume: number;
+            silver_min_network_volume: number;
+            gold_min_network_volume: number;
+            platinum_min_network_volume: number;
+            bronze_level_1_revenue_rate: number;
+            bronze_level_2_revenue_rate: number;
+            silver_level_1_revenue_rate: number;
+            silver_level_2_revenue_rate: number;
+            gold_level_1_revenue_rate: number;
+            gold_level_2_revenue_rate: number;
+            platinum_level_1_revenue_rate: number;
+            platinum_level_2_revenue_rate: number;
         };
     };
     responses: never;
@@ -1499,7 +1603,7 @@ export interface operations {
     UsersController_find: {
         parameters: {
             query?: {
-                includes?: ("invite" | "created_invites" | "avatar" | "pools" | "settings" | "notifications" | "device_tokens" | "refresh_tokens" | "predictions" | "api_keys" | "invite.creator" | "created_invites.invitees" | "predictions.reward")[];
+                includes?: ("referral_redemption" | "created_referral_codes" | "avatar" | "pools" | "settings" | "notifications" | "device_tokens" | "refresh_tokens" | "predictions" | "api_keys" | "referral_redemption.referral_code" | "referral_redemption.referral_code.creator" | "created_referral_codes.redemptions" | "created_referral_codes.redemptions.user" | "predictions.reward")[];
             };
             header?: never;
             path: {
@@ -1603,6 +1707,46 @@ export interface operations {
                 content?: never;
             };
             /** @description User not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    UsersController_getReferralRevenue: {
+        parameters: {
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description User identifier */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Referral revenue periods have been retrieved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferralRevenueResponseDto"];
+                };
+            };
+            /** @description You are not authorized to perform this action. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description User or referral revenue not found. */
             404: {
                 headers: {
                     [name: string]: unknown;
