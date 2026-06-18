@@ -1222,8 +1222,6 @@ export interface components {
             worst_return?: Record<string, never> | null;
             user_rank?: Record<string, never> | null;
         };
-        /** @enum {string} */
-        ALL_PREDICTION_RELATIONS: "user" | "pool" | "reward" | "streak" | "pool.image" | "pool.resolution";
         CrowdPredictionDto: {
             id: string;
             prediction: number;
@@ -1239,6 +1237,35 @@ export interface components {
             price_max: number;
             densities: number[];
         };
+        MechanismPayoutSampleDto: {
+            outcome: number;
+            payout: number;
+        };
+        MechanismUserPayoutSimulationDto: {
+            address: string;
+            stake: number;
+            prediction: number;
+            samples: components["schemas"]["MechanismPayoutSampleDto"][];
+        };
+        MechanismPayoutSimulationDto: {
+            outcome_center: number;
+            simulation_range_min: number;
+            simulation_range_max: number;
+            sample_count: number;
+            users: components["schemas"]["MechanismUserPayoutSimulationDto"][];
+        };
+        MechanismUserWinningRangeDto: {
+            address: string;
+            value: number;
+            min: Record<string, never> | null;
+            max: Record<string, never> | null;
+        };
+        DemoPoolPredictionDto: {
+            prediction?: number;
+            stake?: number;
+        };
+        /** @enum {string} */
+        ALL_PREDICTION_RELATIONS: "user" | "pool" | "reward" | "streak" | "pool.image" | "pool.resolution";
         PoolResultsDto: {
             winning_range: number[] | null;
             prediction_range: number[] | null;
@@ -1281,29 +1308,6 @@ export interface components {
             profit: number;
             roi: number;
             is_refund: boolean;
-        };
-        MechanismPayoutSampleDto: {
-            outcome: number;
-            payout: number;
-        };
-        MechanismUserPayoutSimulationDto: {
-            address: string;
-            stake: number;
-            prediction: number;
-            samples: components["schemas"]["MechanismPayoutSampleDto"][];
-        };
-        MechanismPayoutSimulationDto: {
-            outcome_center: number;
-            simulation_range_min: number;
-            simulation_range_max: number;
-            sample_count: number;
-            users: components["schemas"]["MechanismUserPayoutSimulationDto"][];
-        };
-        MechanismUserWinningRangeDto: {
-            address: string;
-            value: number;
-            min: Record<string, never> | null;
-            max: Record<string, never> | null;
         };
         TemplateDto: {
             id: string;
