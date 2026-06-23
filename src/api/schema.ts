@@ -1241,24 +1241,17 @@ export interface components {
             outcome: number;
             payout: number;
         };
-        MechanismUserPayoutSimulationDto: {
-            address: string;
-            stake: number;
-            prediction: number;
-            samples: components["schemas"]["MechanismPayoutSampleDto"][];
-        };
         MechanismPayoutSimulationDto: {
             outcome_center: number;
             simulation_range_min: number;
             simulation_range_max: number;
             sample_count: number;
-            users: components["schemas"]["MechanismUserPayoutSimulationDto"][];
-        };
-        MechanismUserWinningRangeDto: {
             address: string;
-            value: number;
+            stake: number;
+            prediction: number;
             min: Record<string, never> | null;
             max: Record<string, never> | null;
+            samples: components["schemas"]["MechanismPayoutSampleDto"][];
         };
         DemoPoolPredictionDto: {
             prediction?: number;
