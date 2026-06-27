@@ -710,19 +710,11 @@ export interface components {
             /** @default false */
             is_email_subscribe_popup_dismissed: boolean;
             /** @default true */
-            POOL_CREATED: boolean;
+            REWARD_CLAIMED: boolean;
             /** @default true */
-            POOL_RESOLVED: boolean;
+            REFUND_CLAIMED: boolean;
             /** @default true */
-            POOL_REFUNDED: boolean;
-            /** @default true */
-            REWARD_AUTO_CLAIMED: boolean;
-            /** @default true */
-            STREAK_COUNT_RECEIVED: boolean;
-            /** @default true */
-            STREAK_COUNT_RESET: boolean;
-            /** @default true */
-            STREAK_REWARD_WON: boolean;
+            STREAK_REWARD_RECEIVED: boolean;
         };
         SettingsWithRelationsDto: {
             id: string;
@@ -735,7 +727,7 @@ export interface components {
             user?: components["schemas"]["UserDto"];
         };
         /** @enum {string} */
-        NotificationType: "POOL_CREATED" | "POOL_RESOLVED" | "POOL_REFUNDED" | "REWARD_AUTO_CLAIMED" | "STREAK_COUNT_RECEIVED" | "STREAK_COUNT_RESET" | "STREAK_REWARD_WON";
+        NotificationType: "POOL_CREATED" | "POOL_RESOLVED" | "POOL_REFUNDED" | "REWARD_AUTO_CLAIMED" | "STREAK_COUNT_RECEIVED" | "STREAK_COUNT_RESET" | "STREAK_REWARD_WON" | "REWARD_CLAIMED" | "REFUND_CLAIMED" | "STREAK_REWARD_RECEIVED";
         NotificationWithRelationsDto: {
             id: string;
             /** Format: date-time */
@@ -839,6 +831,8 @@ export interface components {
             title: string;
             /** @example 5 */
             fee_percentage: number;
+            /** @example 20 */
+            payout_percentage: number;
             bump: number;
             streak_count_required: number;
             min_precision_score_required: number;
@@ -885,6 +879,8 @@ export interface components {
             title: string;
             /** @example 5 */
             fee_percentage: number;
+            /** @example 20 */
+            payout_percentage: number;
             bump: number;
             streak_count_required: number;
             min_precision_score_required: number;
@@ -1437,6 +1433,7 @@ export interface components {
             streak_count_required: number;
             min_precision_score_required: number;
             available_balance: number;
+            payout_percentage: number;
         };
         StreakPoolDetailsDto: {
             current_pool?: components["schemas"]["PoolWithRelationsDto"] | null;
@@ -1470,6 +1467,12 @@ export interface components {
         };
         DominoApiKeyDto: {
             key: string;
+        };
+        GeneratePropspaceAuthDto: {
+            fs_ref?: string;
+        };
+        PropspaceAuthTokenDto: {
+            access_token: string;
         };
         DominoUserPredictionsResponseDto: {
             total_predictions: number;
