@@ -47,14 +47,6 @@
   "engines": {
     "node": ">=20"
   },
-  "pnpm": {
-    "minimumReleaseAge": 1440,
-    "overrides": {
-      "esbuild": "0.28.1",
-      "ws@>=8.0.0 <8.21.0": "8.21.0",
-      "js-yaml@<=4.1.1": "5.1.0"
-    }
-  },
   "scripts": {
     "gen": "node scripts/gen.mjs",
     "build": "tsup",
