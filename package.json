@@ -1,6 +1,6 @@
 {
   "name": "@trepa/sdk",
-  "version": "0.3.13",
+  "version": "0.3.14",
   "packageManager": "pnpm@11.9.0",
   "description": "Typed TypeScript SDK for the Trepa API",
   "keywords": [
