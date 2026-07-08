@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@alloralabs/allora-sdk": "0.1.1",
-    "@trepa/sdk": "^0.3.15"
+    "@trepa/sdk": "0.3.15"
   },
   "devDependencies": {
     "@types/node": "22.19.18",
