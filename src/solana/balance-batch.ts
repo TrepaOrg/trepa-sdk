@@ -73,6 +73,13 @@ function parseTokenAmount(account: JsonParsedAccount | null): {
 	return { exists: true, amount: BigInt(parsed.info.tokenAmount.amount) };
 }
 
+function parseLamports(account: JsonParsedAccount | null): bigint {
+	if (!account || account.lamports === undefined || account.lamports === null) {
+		return 0n;
+	}
+	return BigInt(account.lamports);
+}
+
 async function fetchAccountsJsonParsed(
 	rpc: ReturnType<typeof createSolanaRpc>,
 	addresses: readonly Address[],
@@ -102,7 +109,7 @@ function parseChunkAccounts(
 	let masterTokenAccountExists: boolean | undefined;
 	if (masterInChunk.wallet) {
 		const masterAccount = accounts[index++] ?? null;
-		masterLamports = masterAccount ? BigInt(masterAccount.lamports) : 0n;
+		masterLamports = parseLamports(masterAccount);
 	}
 	if (masterInChunk.ata) {
 		const token = parseTokenAmount(accounts[index++] ?? null);
@@ -118,7 +125,7 @@ function parseChunkAccounts(
 		bots.push({
 			botAddress: row.botAddress,
 			botAta: row.botAta,
-			solLamports: walletAccount ? BigInt(walletAccount.lamports) : 0n,
+			solLamports: parseLamports(walletAccount),
 			tokenAmount: token.amount,
 			tokenAccountExists: token.exists,
 		});
@@ -160,7 +167,7 @@ export async function fetchFunderBalancesBatch(args: {
 			? parseTokenAmount(accounts[1] ?? null)
 			: { exists: false, amount: 0n };
 		return {
-			masterLamports: walletAccount ? BigInt(walletAccount.lamports) : 0n,
+			masterLamports: parseLamports(walletAccount),
 			masterTokenAmount: token.amount,
 			masterTokenAccountExists: token.exists,
 			bots: [],
