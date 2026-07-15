@@ -37,16 +37,13 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
-        with:
-          standalone: true
-
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version-file: '.nvmrc'
-          cache: 'pnpm'
+
+      - name: Enable Corepack
+        run: corepack enable
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
@@ -85,16 +82,15 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
-
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version-file: '.nvmrc'
-          cache: 'pnpm'
           registry-url: 'https://registry.npmjs.org'
           scope: '@trepa'
+
+      - name: Enable Corepack
+        run: corepack enable
 
       - name: Ensure jq is available
         run: sudo apt-get update && sudo apt-get install -y jq
@@ -156,17 +152,15 @@ jobs:
           name: sdk-release
           path: pkg
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
-        with:
-          version: 11.12.0
-
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 22.23.1
           registry-url: 'https://registry.npmjs.org'
           scope: '@trepa'
+
+      - name: Setup pnpm
+        run: corepack prepare pnpm@11.12.0 --activate
 
       - name: Publish to npm
         working-directory: pkg
