@@ -160,7 +160,7 @@ jobs:
           scope: '@trepa'
 
       - name: Setup pnpm
-        run: corepack prepare pnpm@11.12.0 --activate
+        run: npm install --global pnpm@11.12.0
 
       - name: Publish to npm
         working-directory: pkg
