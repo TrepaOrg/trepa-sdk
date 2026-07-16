@@ -186,14 +186,20 @@ const pollSleepMs = (ctx: MachineCtx): number => {
 const classify = async (ctx: MachineCtx): Promise<BotState> => {
 	let pool: OpenPool | null;
 	try {
+		const details = await fetchSharedPoolDetails(
+			ctx.client,
+			ctx.streakId,
+			ctx.pollIntervalMs,
+		);
+		const now = Date.now();
+		const current = details.current_pool ?? null;
+		const currentEndMs = current
+			? new Date(current.prediction_end_date).getTime()
+			: Number.NEGATIVE_INFINITY;
 		pool =
-			(
-				await fetchSharedPoolDetails(
-					ctx.client,
-					ctx.streakId,
-					ctx.pollIntervalMs,
-				)
-			).current_pool ?? null;
+			current && !current.is_closed && now < currentEndMs
+				? current
+				: (details.next_pool ?? null);
 	} catch (err) {
 		return { kind: 'recovering_from_error', err };
 	}
