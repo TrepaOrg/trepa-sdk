@@ -4,7 +4,7 @@ packages:
 minimumReleaseAge: 1440
 
 overrides:
-  brace-expansion@<1.1.16: 1.1.16
+  brace-expansion@<1.1.16: 5.0.8
   'brace-expansion@>=2.0.0 <2.1.2': 2.1.2
   'brace-expansion@>=3.0.0 <5.0.7': 5.0.7
   esbuild: 0.28.1
@@ -16,3 +16,5 @@ allowBuilds:
 minimumReleaseAgeExclude:
   # Renovate security update: pnpm@11.8.0
   - pnpm@11.8.0
+  # Renovate security update: brace-expansion@5.0.8
+  - brace-expansion@5.0.8
