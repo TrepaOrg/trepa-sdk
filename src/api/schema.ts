@@ -604,6 +604,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/volatility-snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the latest BTC volatility snapshot
+         * @description Returns the latest canonical BTC/USD 30-second EWMA volatility snapshot.
+         */
+        get: operations["VolatilitySnapshotController_getLatest"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -727,7 +747,7 @@ export interface components {
             user?: components["schemas"]["UserDto"];
         };
         /** @enum {string} */
-        NotificationType: "POOL_CREATED" | "POOL_RESOLVED" | "POOL_REFUNDED" | "REWARD_AUTO_CLAIMED" | "STREAK_COUNT_RECEIVED" | "STREAK_COUNT_RESET" | "STREAK_REWARD_WON" | "REWARD_CLAIMED" | "REFUND_CLAIMED" | "STREAK_REWARD_RECEIVED";
+        NotificationType: "POOL_CREATED" | "POOL_RESOLVED" | "POOL_REFUNDED" | "REWARD_AUTO_CLAIMED" | "STREAK_COUNT_RECEIVED" | "STREAK_COUNT_RESET" | "STREAK_REWARD_WON" | "REWARD_CLAIMED" | "REFUND_CLAIMED" | "STREAK_REWARD_RECEIVED" | "REFERRAL_PAYOUT_PAID";
         NotificationWithRelationsDto: {
             id: string;
             /** Format: date-time */
@@ -1025,17 +1045,16 @@ export interface components {
             level_1_referred_volume: number;
             level_2_referred_volume: number;
             referred_user_volume: number;
-            /**
-             * @description Referral revenue tier for the period.
-             * @enum {string}
-             */
+            /** @enum {string} */
             revenue_tier: "BRONZE" | "SILVER" | "GOLD" | "PLATINUM";
-            /** @description Level 1 revenue rate for the period. */
             level_1_revenue_rate: number;
-            /** @description Level 2 revenue rate for the period. */
             level_2_revenue_rate: number;
-            /** @description Eligible revenue for the period. */
             eligible_payout: number;
+            wallet_address: string;
+            payout_id?: Record<string, never> | null;
+            /** Format: date-time */
+            paid_at?: string;
+            payout_transaction_signature?: Record<string, never> | null;
         };
         ReferralRevenueRateDto: {
             id: string;
@@ -1465,14 +1484,14 @@ export interface components {
             streak_count_required: number;
             min_precision_score_required: number;
         };
+        GenerateCherryEmbedTokenDto: {
+            wallet_address: string;
+        };
+        CherryEmbedTokenDto: {
+            token: string;
+        };
         DominoApiKeyDto: {
             key: string;
-        };
-        GeneratePropspaceAuthDto: {
-            fs_ref?: string;
-        };
-        PropspaceAuthTokenDto: {
-            access_token: string;
         };
         DominoUserPredictionsResponseDto: {
             total_predictions: number;
@@ -1495,6 +1514,78 @@ export interface components {
             gold_level_2_revenue_rate: number;
             platinum_level_1_revenue_rate: number;
             platinum_level_2_revenue_rate: number;
+        };
+        CreateReferralRevenueTierOverrideDto: {
+            user_id: string;
+            /** Format: date-time */
+            effective_from: string;
+            /** @enum {string} */
+            revenue_tier: "BRONZE" | "SILVER" | "GOLD" | "PLATINUM";
+        };
+        ReferralRevenueTierOverrideDto: {
+            id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            user_id: string;
+            /** Format: date-time */
+            effective_from: string;
+            /** @enum {string} */
+            revenue_tier: "BRONZE" | "SILVER" | "GOLD" | "PLATINUM";
+        };
+        /** @enum {string} */
+        VolatilitySnapshotSymbol: "Crypto.BTC/USD";
+        /** @enum {string} */
+        VolatilitySnapshotResolution: "30S";
+        /** @enum {string} */
+        VolatilitySnapshotSource: "BINANCE";
+        VolatilitySnapshotDto: {
+            id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            value: number;
+            /** Format: date-time */
+            window_start: string;
+            /** Format: date-time */
+            window_end: string;
+            n_obs: number;
+            symbol: components["schemas"]["VolatilitySnapshotSymbol"];
+            resolution: components["schemas"]["VolatilitySnapshotResolution"];
+            source: components["schemas"]["VolatilitySnapshotSource"];
+        };
+        ReferralRevenuePayoutDto: {
+            id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            user_id: string;
+            paid_by?: Record<string, never> | null;
+            /** Format: date-time */
+            period_start: string;
+            /** Format: date-time */
+            period_end: string;
+            amount: number;
+            wallet_address: string;
+            transaction_signature: string;
+            /** Format: date-time */
+            paid_at: string;
+        };
+        CreateReferralRevenuePayoutDto: {
+            user_id: string;
+            paid_by?: Record<string, never> | null;
+            /** Format: date-time */
+            period_start: string;
+            /** Format: date-time */
+            period_end: string;
+            amount: number;
+            wallet_address: string;
+            transaction_signature: string;
+            /** Format: date-time */
+            paid_at: string;
         };
     };
     responses: never;
@@ -2450,6 +2541,26 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    VolatilitySnapshotController_getLatest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Latest volatility snapshot has been retrieved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VolatilitySnapshotDto"];
+                };
             };
         };
     };
