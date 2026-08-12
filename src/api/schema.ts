@@ -1426,6 +1426,25 @@ export interface components {
             token: string;
             platform: components["schemas"]["DevicePlatform"];
         };
+        CreateExternalAuthenticationProviderDto: {
+            issuer: string;
+            enabled: boolean;
+            name: string;
+            key_id: string;
+            public_key: string;
+        };
+        ExternalAuthenticationProviderDto: {
+            id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            issuer: string;
+            enabled: boolean;
+            name: string;
+            key_id: string;
+            public_key: string;
+        };
         /** @enum {string} */
         ProgramConfigStatus: "ACTIVE" | "FROZEN";
         ProgramConfigsDto: {
@@ -1489,15 +1508,6 @@ export interface components {
         };
         CherryEmbedTokenDto: {
             token: string;
-        };
-        DominoApiKeyDto: {
-            key: string;
-        };
-        DominoUserPredictionsResponseDto: {
-            total_predictions: number;
-        };
-        DominoUserDepositsResponseDto: {
-            total_deposited: number;
         };
         CreateReferralRevenueRateDto: {
             /** Format: date-time */
