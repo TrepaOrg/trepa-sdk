@@ -55,8 +55,8 @@
     "prepublishOnly": "pnpm build"
   },
   "dependencies": {
-    "@solana-program/system": "0.13.0",
-    "@solana-program/token": "0.15.0",
+    "@solana-program/system": "0.14.1",
+    "@solana-program/token": "0.16.1",
     "@solana/addresses": "6.10.0",
     "@solana/keys": "6.10.0",
     "@solana/kit": "6.10.0",
